@@ -1,8 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "DT V1-V3 amplicon pipeline parameters",
+  "title": "16S V1V3/V3V4 amplicon pipeline parameters",
   "type": "object",
   "properties": {
+    "region": { "type": "string", "enum": ["V1V3", "V3V4", "v1v3", "v3v4"], "default": "V1V3" },
+    "primer_f": { "type": ["string", "null"], "pattern": "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+$", "description": "Override forward primer (5 prime to 3 prime)" },
+    "primer_r": { "type": ["string", "null"], "pattern": "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+$", "description": "Override reverse primer (5 prime to 3 prime)" },
+    "adapter_f": { "type": ["string", "null"], "pattern": "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+$", "description": "Override forward read-through adapter" },
+    "adapter_r": { "type": ["string", "null"], "pattern": "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+$", "description": "Override reverse read-through adapter" },
     "reads": { "type": "string", "description": "Paired FASTQ glob" },
     "outdir": { "type": "string", "default": "results" },
     "classifier": { "type": "string", "description": "QIIME 2 SILVA classifier artifact" },

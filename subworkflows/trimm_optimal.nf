@@ -1,4 +1,4 @@
-include { DADA2_TRIMM_SWEEP; TAXONOMY_TRIMM_SWEEP; SELECT_TRIMM_OPTIMAL } from '../../modules/local/trimm_optimal'
+include { DADA2_TRIMM_SWEEP; TAXONOMY_TRIMM_SWEEP; SELECT_TRIMM_OPTIMAL } from '../modules/trimm_optimal'
 
 workflow TRIMM_OPTIMAL_WORKFLOW {
     take:

@@ -1,0 +1,4 @@
+# Replace either sequence to override the selected region's default.
+region: V3V4
+primer_f: CCTACGGGNGGCWGCAG
+primer_r: GACTACHVGGGTATCTAATCC

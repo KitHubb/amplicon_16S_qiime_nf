@@ -1,4 +1,4 @@
-process CUTADAPT_V1V3 {
+process CUTADAPT {
     tag meta.id
     label 'process_medium'
     container params.cutadapt_sif
@@ -7,6 +7,7 @@ process CUTADAPT_V1V3 {
 
     input:
     tuple val(meta), path(r1), path(r2)
+    val primers
 
     output:
     tuple val(meta),
@@ -20,8 +21,8 @@ process CUTADAPT_V1V3 {
     script:
     """
     cutadapt --cores ${task.cpus} \
-      -g '${params.primer_f}' -a '${params.adapter_f}' \
-      -G '${params.primer_r}' -A '${params.adapter_r}' \
+      -g '${primers.primer_f}' -a '${primers.adapter_f}' \
+      -G '${primers.primer_r}' -A '${primers.adapter_r}' \
       -n 2 -q ${params.quality} -Q ${params.quality} \
       --minimum-length ${params.min_length} \
       --discard-untrimmed \
