@@ -7,8 +7,10 @@ workflow TRIMM_OPTIMAL_WORKFLOW {
     taxonomy_label
 
     main:
+    combinations_file = params.trimm_combinations ?: "${projectDir}/params/trimming/${params.region.toString().trim().toLowerCase()}_10bp.tsv"
+    log.info "Truncation candidates: ${combinations_file}"
     combinations = Channel
-        .fromPath(params.trimm_combinations, checkIfExists: true)
+        .fromPath(combinations_file, checkIfExists: true)
         .splitCsv(header: true, sep: '\t', strip: true)
         .map { row ->
             def name = row.name.toString()

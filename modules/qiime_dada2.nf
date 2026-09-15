@@ -30,6 +30,7 @@ process QIIME_DADA2 {
       --p-max-ee-f ${params.dada2_max_ee_f} \
       --p-max-ee-r ${params.dada2_max_ee_r} \
       --p-trunc-q 2 \
+      --p-min-overlap 12 \
       --p-chimera-method consensus \
       --p-n-threads ${task.cpus} \
       --o-table table.qza \

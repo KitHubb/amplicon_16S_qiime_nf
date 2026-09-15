@@ -20,7 +20,7 @@
     "dada2_trunc_len_f": { "type": "integer", "default": 0, "minimum": 0 },
     "dada2_trunc_len_r": { "type": "integer", "default": 0, "minimum": 0 },
     "trimm_optimal": { "type": "boolean", "default": false },
-    "trimm_combinations": { "type": "string", "description": "TSV containing name, trunc_len_f and trunc_len_r" },
+    "trimm_combinations": { "type": ["string", "null"], "description": "Custom TSV containing name, trunc_len_f and trunc_len_r; omitted selects params/trimming/<region>_10bp.tsv" },
     "taxonomy_confidence": { "type": "number", "default": 0.7, "minimum": 0, "maximum": 1 },
     "taxonomy_label": { "type": "string", "default": "AUTO", "description": "Classifier/cache label such as SILVA or GG2; AUTO infers it from the classifier path" },
     "optimal_min_sample_reads": { "type": "integer", "default": 10000, "minimum": 0 }

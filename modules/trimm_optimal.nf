@@ -24,7 +24,7 @@ process DADA2_TRIMM_SWEEP {
       --p-trim-left-f 0 --p-trim-left-r 0 \
       --p-trunc-len-f ${trunc_f} --p-trunc-len-r ${trunc_r} \
       --p-max-ee-f ${params.dada2_max_ee_f} --p-max-ee-r ${params.dada2_max_ee_r} \
-      --p-trunc-q 2 --p-chimera-method consensus --p-n-threads ${task.cpus} \
+      --p-trunc-q 2 --p-min-overlap 12 --p-chimera-method consensus --p-n-threads ${task.cpus} \
       --o-table ${opt_id}.table.qza \
       --o-representative-sequences ${opt_id}.rep-seqs.qza \
       --o-denoising-stats ${opt_id}.denoising-stats.qza

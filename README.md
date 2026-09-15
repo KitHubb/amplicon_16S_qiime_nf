@@ -62,7 +62,7 @@ nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
 
 ### 후보 길이 변경
 
-기본 파일은 [params/trimming/trimm_combinations_10bp.tsv](params/trimming/trimm_combinations_10bp.tsv)이며, 10개 조합이 들어 있습니다. 외부 TSV를 만들고 `--trimm_combinations /path/to/candidates.tsv` 또는 YAML의 `trimm_combinations`에 지정할 수 있습니다.
+영역별 기본 파일은 [v1v3_10bp.tsv](params/trimming/v1v3_10bp.tsv)와 [v3v4_10bp.tsv](params/trimming/v3v4_10bp.tsv)이며, 각각 10개 조합이 들어 있습니다. `--region`에 따라 자동 선택하고, 외부 TSV를 `--trimm_combinations /path/to/candidates.tsv` 또는 YAML의 `trimm_combinations`로 지정하면 우선합니다. 문헌 출처, primer 제거 후 길이 가정과 후보별 overlap 계산은 [trimming 설명](params/trimming/README.md)을 참고하세요.
 
 ```tsv
 name	trunc_len_f	trunc_len_r
@@ -73,7 +73,7 @@ F270_R250	270	250
 
 - 실제 파일은 탭으로 구분하고 후보 이름은 고유하게 지정합니다.
 - 현재 구현은 **F > R**, 두 길이 모두 **10 nt 단위**라는 조건을 검사합니다. 이 제한은 [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf)에서 변경합니다.
-- 영역을 바꿔도 후보 조합은 자동 변경되지 않습니다. 연구자는 read 품질과 paired-end overlap을 고려해 후보를 준비해야 합니다.
+- 기본 후보는 영역에 따라 자동 변경됩니다. 문헌의 약 500/460 bp 산물에서 primer를 뺀 약 465/422 bp insert를 가정했고, 일반·최적화 DADA2 모두 최소 overlap 12 bp를 사용합니다. 실제 길이와 품질에 맞춰 후보를 조정하세요.
 - DADA2 또는 후보 taxonomy가 실패하면 해당 후보는 비교에서 빠집니다. 성공한 후보가 하나도 없으면 선택 단계가 실패합니다.
 - `optimal_min_sample_reads` 기본값은 10000입니다. 이보다 낮은 샘플 수와 merge가 0인 샘플 수는 **보고용 지표**이며 후보 제외나 순위 계산에는 사용하지 않습니다.
 
