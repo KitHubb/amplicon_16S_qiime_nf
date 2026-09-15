@@ -1,7 +1,7 @@
 process CUTADAPT {
     tag meta.id
     label 'process_medium'
-    container params.cutadapt_sif
+    container { params.cutadapt_sif ?: (workflow.containerEngine == 'docker' ? 'quay.io/biocontainers/cutadapt:5.2--py311hc303176_2' : 'docker://quay.io/biocontainers/cutadapt:5.2--py311hc303176_2') }
 
     publishDir "${params.outdir}/02_cutadapt_q20", mode: 'copy', overwrite: true
 

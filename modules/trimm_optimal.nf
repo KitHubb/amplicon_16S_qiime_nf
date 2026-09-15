@@ -1,10 +1,10 @@
 process DADA2_TRIMM_SWEEP {
     tag "${opt_id}:F${trunc_f}_R${trunc_r}"
     label 'process_high'
-    container params.qiime_sif
+    container { params.qiime_sif ?: (workflow.containerEngine == 'docker' ? 'quay.io/qiime2/amplicon:2025.7' : 'docker://quay.io/qiime2/amplicon:2025.7') }
     errorStrategy 'ignore'
 
-    publishDir "${params.outdir}/trimm_optimal_dada2", mode: 'copy', overwrite: true
+    publishDir "${params.outdir}/05_trimm_optimal_dada2", mode: 'copy', overwrite: true
 
     input:
     tuple val(opt_id), val(trunc_f), val(trunc_r), path(demux)
@@ -34,11 +34,11 @@ process DADA2_TRIMM_SWEEP {
 process TAXONOMY_TRIMM_SWEEP {
     tag "${taxonomy_label}:${opt_id}"
     label 'process_high'
-    container params.qiime_sif
+    container { params.qiime_sif ?: (workflow.containerEngine == 'docker' ? 'quay.io/qiime2/amplicon:2025.7' : 'docker://quay.io/qiime2/amplicon:2025.7') }
     errorStrategy 'ignore'
 
     publishDir "${params.outdir}", mode: 'copy', overwrite: true,
-        saveAs: { filename -> "trimm_optimal_${taxonomy_label}/${filename}" }
+        saveAs: { filename -> "05_trimm_optimal_${taxonomy_label}/${filename}" }
 
     input:
     tuple val(opt_id), val(trunc_f), val(trunc_r), path(table), path(repseq), path(stats)
@@ -131,10 +131,10 @@ PY
 process SELECT_TRIMM_OPTIMAL {
     tag "${taxonomy_label}:rank_all_candidates"
     label 'process_low'
-    container params.qiime_sif
+    container { params.qiime_sif ?: (workflow.containerEngine == 'docker' ? 'quay.io/qiime2/amplicon:2025.7' : 'docker://quay.io/qiime2/amplicon:2025.7') }
 
     publishDir "${params.outdir}", mode: 'copy', overwrite: true,
-        saveAs: { filename -> "trimm_optimal_${taxonomy_label}/selected/${filename}" }
+        saveAs: { filename -> "05_trimm_optimal_${taxonomy_label}/selected/${filename}" }
 
     input:
     val taxonomy_label

@@ -2,7 +2,7 @@ nextflow.enable.dsl = 2
 
 include { CUTADAPT } from '../modules/cutadapt'
 
-workflow {
+workflow PRIMER_TEST {
     def legacy = PrimerConfig.resolve([:])
     assert legacy.primer_f == 'AGAGTTTGATCCTGGCTCAG'
     assert legacy.primer_r == 'ATTACCGCGGCTGCTGG'
@@ -31,4 +31,8 @@ workflow {
     assert selected.primer_r == v34.primer_r
     log.info 'Primer assertions and YAML/CLI precedence passed'
     CUTADAPT(Channel.of(tuple([id: 'synthetic'], file(params.test_r1), file(params.test_r2))), Channel.value(selected))
+}
+
+workflow {
+    PRIMER_TEST()
 }

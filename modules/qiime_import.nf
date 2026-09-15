@@ -1,7 +1,7 @@
 process QIIME_IMPORT {
     tag params.run_label
     label 'process_medium'
-    container params.qiime_sif
+    container { params.qiime_sif ?: (workflow.containerEngine == 'docker' ? 'quay.io/qiime2/amplicon:2025.7' : 'docker://quay.io/qiime2/amplicon:2025.7') }
 
     publishDir "${params.outdir}/04_qiime2_import", mode: 'copy', overwrite: true
 

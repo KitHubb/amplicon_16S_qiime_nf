@@ -1,7 +1,7 @@
 process QIIME_TAXONOMY {
     tag "${params.run_label}:${taxonomy_label}"
     label 'process_high'
-    container params.qiime_sif
+    container { params.qiime_sif ?: (workflow.containerEngine == 'docker' ? 'quay.io/qiime2/amplicon:2025.7' : 'docker://quay.io/qiime2/amplicon:2025.7') }
 
     publishDir "${params.outdir}/06_taxonomy", mode: 'copy', overwrite: true
 

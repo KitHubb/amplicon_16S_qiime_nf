@@ -3,6 +3,10 @@
   "title": "16S V1V3/V3V4 amplicon pipeline parameters",
   "type": "object",
   "properties": {
+    "test": { "type": "boolean", "default": false, "description": "Run only the bundled synthetic primer regression" },
+    "qc_sif": { "type": ["string", "null"], "description": "Optional local SIF containing both FastQC and MultiQC" },
+    "cutadapt_sif": { "type": ["string", "null"], "description": "Optional local Cutadapt SIF; otherwise download BioContainers image" },
+    "qiime_sif": { "type": ["string", "null"], "description": "Optional local QIIME 2 SIF; otherwise download official amplicon image" },
     "region": { "type": "string", "enum": ["V1V3", "V3V4", "v1v3", "v3v4"], "default": "V1V3" },
     "primer_f": { "type": ["string", "null"], "pattern": "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+$", "description": "Override forward primer (5 prime to 3 prime)" },
     "primer_r": { "type": ["string", "null"], "pattern": "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+$", "description": "Override reverse primer (5 prime to 3 prime)" },
@@ -25,5 +29,7 @@
     "taxonomy_label": { "type": "string", "default": "AUTO", "description": "Classifier/cache label such as SILVA or GG2; AUTO infers it from the classifier path" },
     "optimal_min_sample_reads": { "type": "integer", "default": 10000, "minimum": 0 }
   },
-  "required": ["reads", "classifier", "metadata"]
+  "if": { "properties": { "test": { "const": true } }, "required": ["test"] },
+  "then": {},
+  "else": { "required": ["reads", "classifier", "metadata"] }
 }

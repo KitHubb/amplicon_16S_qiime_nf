@@ -6,6 +6,8 @@ Workflow: FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 i
 
 ## 1. Quick start
 
+Install Nextflow (tested with 26.04.2), Java 17+, and Docker, Singularity, or Apptainer. Public images are downloaded on first use and cached; no manual image build is needed. Choose `-profile docker`, `-profile singularity` (the default runtime), or `-profile apptainer`.
+
 Create an external `analysis.yml` so project paths remain outside the repository:
 
 ```yaml
@@ -15,9 +17,6 @@ metadata: "/path/to/metadata.tsv"
 classifier: "/path/to/classifier.qza"
 outdir: "/path/to/results"
 run_label: "experiment01"
-qc_sif: "/path/to/qc_fastqc_multiqc.sif"
-cutadapt_sif: "/path/to/read_cleanup_cutadapt-5.2.sif"
-qiime_sif: "/path/to/qiime2_amplicon_2025.7.sif"
 trimm_optimal: true
 taxonomy_label: SILVA
 taxonomy_confidence: 0.7
@@ -75,7 +74,7 @@ If a command option is hard-coded, update both regular and optimization modules 
 
 ## 5. Outputs
 
-Results are written below `outdir`: `01_raw_qc`, `02_cutadapt_q20`, `03_clean_qc`, `04_qiime2_import`, `05_dada2`, `06_taxonomy`, `07_phylogeny`, and `08_diversity`. Optimization additionally writes `trimm_optimal_dada2/` and `trimm_optimal_<LABEL>/selected/`. Review `all_parameter_results.tsv`, `optimal_selection.tsv`, and `optimal_truncation.txt` first.
+Results are written below `outdir`: `01_raw_qc`, `02_cutadapt_q20`, `03_clean_qc`, `04_qiime2_import`, `05_dada2`, `06_taxonomy`, `07_phylogeny`, and `08_diversity`. Optimization additionally writes `05_trimm_optimal_dada2/` and `05_trimm_optimal_<LABEL>/selected/`. Review `all_parameter_results.tsv`, `optimal_selection.tsv`, and `optimal_truncation.txt` first.
 
 Do not commit raw reads, QIIME artifacts, containers, work directories, or participant metadata. Synthetic primer tests are documented in [tests/README.md](tests/README.md).
 
@@ -87,7 +86,7 @@ Illumina paired-end 16S V1V3/V3V4 분석 파이프라인입니다. 핵심 기능
 
 ## 1. 빠른 실행
 
-필요 환경은 Linux, Nextflow 26.04.2(검증 버전), Singularity 및 아래 세 종류의 컨테이너입니다. FASTQ, QIIME 2 metadata TSV, classifier QZA는 연구자가 준비합니다. 저장소의 컨테이너 기본 경로는 개발 환경 기준이므로 실행 환경에 맞게 지정해야 합니다.
+필요 환경은 Linux, Java 17+, Nextflow 26.04.2(검증 버전), Docker 또는 Singularity/Apptainer입니다. 컨테이너 이미지는 첫 실행 시 자동 다운로드하고 이후 캐시를 재사용합니다. FASTQ, QIIME 2 metadata TSV, classifier QZA는 연구자가 준비합니다. 실행 프로필은 `docker`, `singularity`(기본), `apptainer` 중 하나를 선택합니다.
 
 프로젝트 폴더에 `analysis.yml`을 작성합니다. 실제 데이터 경로와 설정은 저장소 밖에서 관리할 수 있습니다.
 
@@ -98,10 +97,6 @@ metadata: "/path/to/metadata.tsv"
 classifier: "/path/to/classifier.qza"
 outdir: "/path/to/results"
 run_label: "experiment01"
-
-qc_sif: "/path/to/qc_fastqc_multiqc.sif"
-cutadapt_sif: "/path/to/read_cleanup_cutadapt-5.2.sif"
-qiime_sif: "/path/to/qiime2_amplicon_2025.7.sif"
 
 trimm_optimal: true
 taxonomy_label: SILVA
@@ -186,12 +181,12 @@ Primer는 IUPAC DNA 문자로 검사하고 소문자도 허용합니다. Read-th
 
 | 변경 내용 | 설정 또는 파일 | 설명 |
 |---|---|---|
-| FastQC·MultiQC 환경 | `qc_sif` — [nextflow.config](nextflow.config) 또는 외부 YAML | 두 도구가 들어 있는 SIF 경로 |
-| Cutadapt 환경 | `cutadapt_sif` — 같은 위치 | Cutadapt가 들어 있는 SIF 경로 |
-| QIIME 2 환경 | `qiime_sif` — 같은 위치 | DADA2, feature-classifier, alignment, phylogeny, diversity 플러그인 및 최적화에 쓰는 Python·BIOM 실행 환경 |
+| FastQC·MultiQC 환경 | `qc_sif` — [nextflow.config](nextflow.config) 또는 외부 YAML | 선택 사항: 두 도구가 들어 있는 로컬 SIF 절대 경로. 미지정 시 각 BioContainers 이미지 사용 |
+| Cutadapt 환경 | `cutadapt_sif` — 같은 위치 | 선택 사항: 로컬 SIF 절대 경로. 미지정 시 BioContainers Cutadapt 5.2 사용 |
+| QIIME 2 환경 | `qiime_sif` — 같은 위치 | 선택 사항: 로컬 SIF 절대 경로. 미지정 시 공식 QIIME 2 amplicon 2025.7 이미지 사용 |
 | 기본 CPU·메모리·시간 | [conf/base.config](conf/base.config) | `process_low`: 8 CPU/16 GB/12 h, `process_medium`: 8 CPU/24 GB/24 h, `process_high`: 16 CPU/64 GB/72 h |
 | 로컬/HPC 실행 방식 | [nextflow.config](nextflow.config)의 `process.executor` | 현재 `local`. 스케줄러·queue 설정은 기관 환경에 맞춰 변경 |
-| 컨테이너 실행 설정 | 같은 파일의 `singularity`, `profiles` | 현재 Singularity 활성화 및 자동 mount 설정 |
+| 컨테이너 실행 설정 | 같은 파일의 `singularity`, `profiles` | Docker, Singularity, Apptainer 선택; `test`와 조합 가능 |
 | 입력·결과·classifier 경로 | 외부 YAML | `reads`, `metadata`, `classifier`, `outdir`; 작업 경로는 CLI `-work-dir` |
 
 자원은 작업 하나당 설정입니다. 최적화 후보가 동시에 실행되므로 서버 전체 자원을 고려해야 합니다. 예를 들어 외부 `site.config`에 다음처럼 작성할 수 있습니다.
@@ -244,9 +239,9 @@ DADA2의 `trunc-q`, chimera 방식처럼 명령에 고정된 옵션을 바꾸려
 | `02_cutadapt_q20/` | Primer 제거 FASTQ, Cutadapt 로그·JSON. 폴더명은 quality 설정과 관계없이 고정 |
 | `04_qiime2_import/` | Manifest, paired-end QZA, 품질 요약 |
 | `05_dada2/` | 최적화가 꺼진 일반 DADA2 결과 및 요약 |
-| `trimm_optimal_dada2/` | 최적화 후보별 DADA2 결과 |
-| `trimm_optimal_<LABEL>/` | 후보별 taxonomy 및 지표 |
-| `trimm_optimal_<LABEL>/selected/` | 전체 순위, 선택 길이, 선택된 QZA |
+| `05_trimm_optimal_dada2/` | 최적화 후보별 DADA2 결과 |
+| `05_trimm_optimal_<LABEL>/` | 후보별 taxonomy 및 지표 |
+| `05_trimm_optimal_<LABEL>/selected/` | 전체 순위, 선택 길이, 선택된 QZA |
 | `06_taxonomy/` | `taxonomy_<LABEL>.qza`, `taxa-bar-plots_<LABEL>.qzv` 등 |
 | `07_phylogeny/`, `08_diversity/` | 계통수 및 활성화한 경우 다양성 결과 |
 
@@ -280,3 +275,38 @@ tests/                   # 합성 FASTQ와 primer 회귀 테스트
 단일 도구는 `main.nf`에서 모듈을 직접 호출합니다. 여러 단계를 연결하는 QC와 절단 길이 최적화만 subworkflow로 유지합니다.
 
 Primer 테스트 실행 방법은 [tests/README.md](tests/README.md)에 있습니다. 이 테스트는 기본 primer, 덮어쓰기 우선순위, adapter 계산과 합성 FASTQ trimming을 확인하며, 전체 QIIME 2 분석이나 최적 조합의 생물학적 타당성을 검증하는 테스트는 아닙니다.
+
+## Containers and CI / 컨테이너와 CI
+
+Each process in `modules/*.nf` declares a versioned public container:
+
+| Tool | Image |
+|---|---|
+| FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` |
+| MultiQC | `quay.io/biocontainers/multiqc:1.27--pyhdfd78af_0` |
+| Cutadapt | `quay.io/biocontainers/cutadapt:5.2--py311hc303176_2` |
+| QIIME 2 | `quay.io/qiime2/amplicon:2025.7` |
+
+Singularity/Apptainer directives use `docker://`; Docker uses the same image without that prefix, as required by [Nextflow](https://docs.seqera.io/nextflow/container/singularity). The runtime itself must already be installed. First use requires registry access and enough disk space, especially for QIIME 2. For a reusable Singularity cache, set `NXF_SINGULARITY_CACHEDIR` to a writable directory (shared across compute nodes on HPC); for Apptainer use `NXF_APPTAINER_CACHEDIR`.
+
+이미 보유한 로컬 SIF가 있다면 외부 `analysis.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. `qc_sif`에는 FastQC와 MultiQC가 모두 있어야 합니다. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
+
+```yaml
+# Optional local overrides; omit these to download public images automatically.
+qc_sif: "/absolute/path/to/qc_fastqc_multiqc.sif"
+cutadapt_sif: "/absolute/path/to/read_cleanup_cutadapt-5.2.sif"
+qiime_sif: "/absolute/path/to/qiime2_amplicon_2025.7.sif"
+```
+
+Run the synthetic primer regression without biological input data:
+
+```bash
+nextflow run . -profile test,docker
+python3 tests/check_trimmed.py results/primer-test
+# HPC alternative:
+nextflow run . -profile test,singularity
+```
+
+`test` runs only primer assertions and real Cutadapt trimming on bundled synthetic FASTQ. It does not test the full QIIME 2 pipeline. The output verifier checks that both mates contain exactly one 60-base T sequence. See [tests/README.md](tests/README.md) for YAML/CLI precedence testing.
+
+[GitHub Actions](.github/workflows/ci.yml) runs this regression and output verification on every push and pull request. A `v*` tag publishes a GitHub release only after that tag's test passes.
