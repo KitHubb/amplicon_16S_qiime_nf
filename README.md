@@ -32,6 +32,31 @@ nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
 
 Metadata must be tab-delimited, start with `sample-id`, and match FASTQ sample IDs.
 
+### Preparing sample inputs
+
+The current workflow accepts a FASTQ glob through `reads` and sample annotations through `metadata`. It does **not** accept a samplesheet CSV containing FASTQ paths (`--input` / `--samplesheet`). The QIIME 2 import manifest is generated automatically after Cutadapt.
+
+For example, organize paired reads as:
+
+```text
+reads/
+  S01_1.fastq.gz
+  S01_2.fastq.gz
+  S02_1.fastq.gz
+  S02_2.fastq.gz
+```
+
+With `reads: "/absolute/path/to/reads/*_{1,2}.fastq.gz"`, sample IDs are `S01` and `S02`. Use one R1/R2 pair per sample. Prepare a tab-separated metadata file:
+
+```tsv
+sample-id	group
+S01	control
+S02	treatment
+```
+
+Set `metadata: "/absolute/path/to/metadata.tsv"` in `analysis.yml`. IDs must be unique and match the IDs extracted from the FASTQ filenames exactly. `group` is an example annotation; replace or extend it for your experiment. Use actual tabs, not spaces or commas. Run each target region separately with its matching reads and metadata.
+
+
 ## 2. Forward/reverse truncation optimization
 
 Set `trimm_optimal: true`. Each candidate F/R pair is run independently with DADA2 after Cutadapt. Candidate ASVs are classified, then completed candidates are ranked by species-assigned reads per DADA2 input read, species-assigned reads per feature-table read, and non-chimeric reads per input read. The top candidate is sent to downstream taxonomy, phylogeny, and diversity analysis.
@@ -115,6 +140,76 @@ nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
 
 - `Sample01_1.fastq.gz` / `Sample01_2.fastq.gz`는 위 패턴으로 입력합니다. `_R1_001` / `_R2_001` 형식은 `*_{R1,R2}_001.fastq.gz`로 바꿉니다.
 - Metadata는 탭으로 구분하고 첫 열을 `sample-id`로 지정합니다. ID는 FASTQ 패턴에서 추출한 ID와 일치해야 합니다.
+
+### Samplesheet와 metadata 준비
+
+현재 버전은 FASTQ 경로를 나열한 **samplesheet CSV 입력(`--input`, `--samplesheet`)을 지원하지 않습니다.** `reads`의 파일명 패턴으로 R1/R2를 묶고, 샘플 정보는 `metadata.tsv`로 받습니다. QIIME 2용 `manifest.tsv`는 Cutadapt 처리 후 자동 생성됩니다.
+
+다음처럼 샘플당 R1/R2 한 쌍을 준비합니다.
+
+```text
+reads/
+  S01_1.fastq.gz
+  S01_2.fastq.gz
+  S02_1.fastq.gz
+  S02_2.fastq.gz
+```
+
+`analysis.yml` 예시 양식입니다. 경로를 실제 파일의 절대 경로로 바꿔 저장하세요.
+
+```yaml
+region: V3V4
+reads: "/absolute/path/to/reads/*_{1,2}.fastq.gz"
+metadata: "/absolute/path/to/metadata.tsv"
+classifier: "/absolute/path/to/classifier.qza"
+outdir: "/absolute/path/to/results"
+run_label: "experiment01"
+trimm_optimal: true
+taxonomy_label: SILVA
+taxonomy_confidence: 0.7
+diversity_enabled: true
+sampling_depth: 1000
+```
+
+V1V3 데이터는 `region: V1V3`로 설정하세요. 영역별 기본 후보를 사용하려면 `trimm_combinations`를 지정하지 않습니다.
+
+위 패턴에서 추출되는 샘플 ID는 `S01`, `S02`입니다. Metadata는 아래처럼 작성합니다. 열 구분자는 실제 탭이어야 합니다.
+
+```tsv
+sample-id	group
+S01	control
+S02	treatment
+```
+
+터미널에서 실제 탭으로 된 예제 파일을 만들려면:
+
+```bash
+printf 'sample-id\tgroup\nS01\tcontrol\nS02\ttreatment\n' > metadata.tsv
+```
+
+- 첫 열의 샘플 ID는 중복 없이 FASTQ에서 추출된 ID와 정확히 일치해야 합니다.
+- `group`은 예시입니다. 실험에 맞는 조건·배치 등 샘플 정보 열을 추가할 수 있습니다.
+- 파일명이 다르면 `reads` 패턴도 맞춰야 합니다. 가장 간단한 방법은 위의 `샘플ID_1/2.fastq.gz` 형식으로 준비하는 것입니다.
+- V1V3와 V3V4는 해당 영역의 reads와 metadata를 지정해 별도로 실행합니다.
+
+### 외부 사용자 실행 명령
+
+Java 17+, Nextflow와 Docker 또는 Singularity를 준비한 뒤, 저장소를 직접 복제하지 않고 실행할 수 있습니다.
+
+```bash
+# 합성 데이터로 primer/Cutadapt 설치 테스트
+nextflow run KitHubb/amplicon_16S_qiime_nf -r main -latest -profile test,docker
+
+# 준비한 analysis.yml과 실제 데이터로 전체 분석
+nextflow run KitHubb/amplicon_16S_qiime_nf -r main -latest \
+  -profile docker \
+  -params-file analysis.yml
+```
+
+Singularity 환경에서는 `test,docker`를 `test,singularity`로, `docker`를 `singularity`로 바꿉니다. 합성 테스트는 DADA2 최적화까지 실행하지 않습니다. 동일 분석을 재개할 때는 실행 명령에 `-resume`을 추가하세요.
+
+### 추가 설정
+
 - Classifier는 사용하는 QIIME 2 환경과 호환되는 artifact를 지정합니다. SILVA 이외의 classifier도 지정할 수 있습니다.
 - 다양성 분석을 생략하려면 `diversity_enabled: false`로 설정합니다. `sampling_depth: 1000`은 기본값이며 연구 데이터의 read 수에 맞게 조정합니다.
 - 재실행 시 같은 work 경로와 `-resume`을 사용합니다. 모듈 호출 구조·옵션·입력이 바뀌면 해당 작업이 다시 실행될 수 있습니다.
