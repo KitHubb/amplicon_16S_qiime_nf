@@ -1,5 +1,86 @@
 # amplicon_16S_qiime_nf
 
+An Illumina paired-end 16S rRNA pipeline for V1V3 and V3V4. It compares forward/reverse DADA2 truncation pairs and selects the best completed pair using taxonomy and read-retention metrics.
+
+Workflow: FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 import → DADA2 truncation sweep and selection → taxonomy → MAFFT/FastTree → diversity analysis.
+
+## 1. Quick start
+
+Create an external `analysis.yml` so project paths remain outside the repository:
+
+```yaml
+region: V3V4
+reads: "/path/to/reads/*_{1,2}.fastq.gz"
+metadata: "/path/to/metadata.tsv"
+classifier: "/path/to/classifier.qza"
+outdir: "/path/to/results"
+run_label: "experiment01"
+qc_sif: "/path/to/qc_fastqc_multiqc.sif"
+cutadapt_sif: "/path/to/read_cleanup_cutadapt-5.2.sif"
+qiime_sif: "/path/to/qiime2_amplicon_2025.7.sif"
+trimm_optimal: true
+taxonomy_label: SILVA
+taxonomy_confidence: 0.7
+diversity_enabled: true
+sampling_depth: 1000
+```
+
+```bash
+nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
+  -profile singularity -params-file /path/to/analysis.yml \
+  -work-dir /path/to/work -resume
+```
+
+Metadata must be tab-delimited, start with `sample-id`, and match FASTQ sample IDs.
+
+## 2. Forward/reverse truncation optimization
+
+Set `trimm_optimal: true`. Each candidate F/R pair is run independently with DADA2 after Cutadapt. Candidate ASVs are classified, then completed candidates are ranked by species-assigned reads per DADA2 input read, species-assigned reads per feature-table read, and non-chimeric reads per input read. The top candidate is sent to downstream taxonomy, phylogeny, and diversity analysis.
+
+“Optimal” means best among the supplied candidates and classifier, not a universal biological optimum. Ranking uses aggregate reads across the dataset.
+
+Region defaults are selected automatically:
+
+- `--region V1V3` → [v1v3_10bp.tsv](params/trimming/v1v3_10bp.tsv)
+- `--region V3V4` → [v3v4_10bp.tsv](params/trimming/v3v4_10bp.tsv)
+
+An external `--trimm_combinations` TSV overrides the region default. It must contain `name`, `trunc_len_f`, and `trunc_len_r`; current validation requires F > R and 10-nt increments. The candidates assume approximately 500 bp V1V3 and 460 bp V3V4 amplicons, primer-removed inserts of approximately 465 and 422 bp, and a DADA2 minimum overlap of 12 bp. These are literature-based search assumptions. Calculations and sources are documented in [params/trimming/README.md](params/trimming/README.md).
+
+## 3. Region and primer selection
+
+| Region | Forward primer (5′→3′) | Reverse primer (5′→3′) |
+|---|---|---|
+| V1V3 | AGAGTTTGATCCTGGCTCAG | ATTACCGCGGCTGCTGG |
+| V3V4 | CCTACGGGNGGCWGCAG | GACTACHVGGGTATCTAATCC |
+
+Use `--region V3V4`, a preset in [params/regions](params/regions), or `--primer_f` / `--primer_r` overrides. Priority is command line > external YAML > region defaults. IUPAC letters are validated and lowercase is accepted. Adapters are reverse complements of the opposite primer unless explicitly supplied.
+
+## 4. Adapting to a research environment
+
+Usually an external YAML is sufficient.
+
+| Purpose | File or parameter |
+|---|---|
+| Container paths | `qc_sif`, `cutadapt_sif`, `qiime_sif` in [nextflow.config](nextflow.config) or YAML |
+| CPU, memory, time, executor | [conf/base.config](conf/base.config), [nextflow.config](nextflow.config), external site config |
+| Region and primer defaults | [lib/PrimerConfig.groovy](lib/PrimerConfig.groovy) |
+| Cutadapt filters | `quality`, `min_length`, [modules/cutadapt.nf](modules/cutadapt.nf) |
+| Fixed DADA2 settings | `dada2_trunc_len_*`, `dada2_max_ee_*`, [modules/qiime_dada2.nf](modules/qiime_dada2.nf) |
+| Candidate execution and ranking | [params/trimming](params/trimming), [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf), [modules/trimm_optimal.nf](modules/trimm_optimal.nf) |
+| Taxonomy | `classifier`, `taxonomy_confidence`, [modules/qiime_taxonomy.nf](modules/qiime_taxonomy.nf) |
+| Phylogeny | [modules/qiime_phylogeny.nf](modules/qiime_phylogeny.nf) |
+| Diversity | `diversity_enabled`, `sampling_depth`, `alpha_max_depth`, [modules/qiime_diversity.nf](modules/qiime_diversity.nf) |
+
+If a command option is hard-coded, update both regular and optimization modules where applicable. Add new parameters to `nextflow.config`, [nextflow_schema.json](nextflow_schema.json), the relevant module, and both language sections of this README.
+
+## 5. Outputs
+
+Results are written below `outdir`: `01_raw_qc`, `02_cutadapt_q20`, `03_clean_qc`, `04_qiime2_import`, `05_dada2`, `06_taxonomy`, `07_phylogeny`, and `08_diversity`. Optimization additionally writes `trimm_optimal_dada2/` and `trimm_optimal_<LABEL>/selected/`. Review `all_parameter_results.tsv`, `optimal_selection.tsv`, and `optimal_truncation.txt` first.
+
+Do not commit raw reads, QIIME artifacts, containers, work directories, or participant metadata. Synthetic primer tests are documented in [tests/README.md](tests/README.md).
+
+---
+
 Illumina paired-end 16S V1V3/V3V4 분석 파이프라인입니다. 핵심 기능은 **forward와 reverse read의 DADA2 절단 길이 조합을 비교하고, 지정한 평가 기준에 따라 최적 조합을 선택**하는 것입니다. 선택된 ASV 결과로 taxonomy, 계통수 및 다양성 분석을 이어갑니다.
 
 분석 흐름: FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 import → DADA2 절단 길이 비교·선택 → taxonomy → MAFFT/FastTree → 다양성 분석.
