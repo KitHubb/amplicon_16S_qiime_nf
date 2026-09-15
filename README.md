@@ -1,4 +1,4 @@
-# amplicon_16S_v1v3_qiime_nf
+# amplicon_16S_qiime_nf
 
 A modular Nextflow DSL2 workflow for paired-end 16S rRNA V1–V3 amplicon sequencing analysis using Cutadapt, FastQC, MultiQC, QIIME 2, DADA2, SILVA taxonomy, phylogenetic reconstruction, and alpha/beta diversity analysis.
 
