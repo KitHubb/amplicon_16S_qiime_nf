@@ -1,14 +1,35 @@
 # amplicon_16S_qiime_nf
 
-An Illumina paired-end 16S rRNA pipeline for V1V3 and V3V4. It compares forward/reverse DADA2 truncation pairs and selects the best completed pair using taxonomy and read-retention metrics.
+[English](#english) · [한국어](#korean)
 
-Workflow: FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 import → DADA2 truncation sweep and selection → taxonomy → MAFFT/FastTree → diversity analysis.
+<a id="english"></a>
 
-## 1. Quick start
+## English
 
-Install Nextflow (tested with 26.04.2), Java 17+, and Docker, Singularity, or Apptainer. Public images are downloaded on first use and cached; no manual image build is needed. Choose `-profile docker`, `-profile singularity` (the default runtime), or `-profile apptainer`.
+### Contents
 
-Create an external `analysis.yml` so project paths remain outside the repository:
+1. [Quick start](#en-start)
+2. [FASTQ and metadata](#en-inputs)
+3. [Region and primers](#en-primers)
+4. [Truncation optimization](#en-optimization)
+5. [Containers and cache](#en-containers)
+6. [Server resources](#en-resources)
+7. [Analysis settings and customization](#en-options)
+8. [Results](#en-outputs)
+9. [Tests and releases](#en-tests)
+10. [Code structure](#en-structure)
+
+<a id="en-start"></a>
+
+### 1. Quick start
+
+This pipeline analyzes Illumina paired-end 16S rRNA reads from the V1V3 or V3V4 region. It can compare DADA2 forward/reverse truncation lengths, select the highest-ranked completed candidate, and use its ASVs for downstream analysis.
+
+**Workflow:** FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 import → DADA2 (fixed lengths or candidate comparison) → taxonomy → MAFFT/FastTree → diversity.
+
+Use Linux, Java 17+, Nextflow 26.04.2 or later (tested with 26.04.2), and one container runtime: Docker, Singularity, or Apptainer. Prepare your FASTQ files, metadata TSV, and a classifier QZA compatible with QIIME 2 amplicon 2025.7. SILVA, GG2, or other compatible classifiers can be used.
+
+Create an external `analysis.yml` (the filename `nextflow_params.yml` also works). Replace the example paths with your own:
 
 ```yaml
 region: V3V4
@@ -23,20 +44,37 @@ taxonomy_confidence: 0.7
 diversity_enabled: true
 sampling_depth: 1000
 ```
+
+Run the released pipeline directly from GitHub; cloning the repository is optional:
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile singularity \
+  -params-file /path/to/analysis.yml \
+  -work-dir /path/to/work
+```
+
+Choose `-profile docker`, `-profile singularity` (the default runtime), or `-profile apptainer`. Images are downloaded on first use and cached. Analysis tools do not need separate host installations.
+
+For a local checkout:
 
 ```bash
 nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
   -profile singularity -params-file /path/to/analysis.yml \
-  -work-dir /path/to/work -resume
+  -work-dir /path/to/work
 ```
 
-Metadata must be tab-delimited, start with `sample-id`, and match FASTQ sample IDs.
+Use `region: V1V3` for V1V3 data. Leave `trimm_combinations` unset to use the region's default candidates. This example enables optimization; the code default for `trimm_optimal` is `false`.
 
-### Preparing sample inputs
+Set `diversity_enabled: false` to skip diversity analysis. Adjust `sampling_depth` to your sample read counts. To resume an analysis, keep the same launch directory and work directory and add `-resume`. Changed inputs, options, or module structure can cause tasks to run again. For the latest development code, replace `-r v0.1.0` with `-r main -latest`.
 
-The current workflow accepts a FASTQ glob through `reads` and sample annotations through `metadata`. It does **not** accept a samplesheet CSV containing FASTQ paths (`--input` / `--samplesheet`). The QIIME 2 import manifest is generated automatically after Cutadapt.
+<a id="en-inputs"></a>
 
-For example, organize paired reads as:
+### 2. FASTQ and metadata
+
+The workflow pairs reads using the filename pattern in `reads` and takes sample annotations from `metadata`. It does **not** accept a CSV samplesheet of FASTQ paths through `--input` or `--samplesheet`. The QIIME 2 import manifest is generated automatically after Cutadapt.
+
+Prepare one R1/R2 pair per sample:
 
 ```text
 reads/
@@ -46,7 +84,9 @@ reads/
   S02_2.fastq.gz
 ```
 
-With `reads: "/absolute/path/to/reads/*_{1,2}.fastq.gz"`, sample IDs are `S01` and `S02`. Use one R1/R2 pair per sample. Prepare a tab-separated metadata file:
+For these files, use `reads: "/path/to/reads/*_{1,2}.fastq.gz"`. The extracted sample IDs are `S01` and `S02`. For filenames ending in `_R1_001.fastq.gz` and `_R2_001.fastq.gz`, use `*_{R1,R2}_001.fastq.gz` instead.
+
+Prepare a tab-separated metadata file with `sample-id` as the first column:
 
 ```tsv
 sample-id	group
@@ -54,186 +94,55 @@ S01	control
 S02	treatment
 ```
 
-Set `metadata: "/absolute/path/to/metadata.tsv"` in `analysis.yml`. IDs must be unique and match the IDs extracted from the FASTQ filenames exactly. `group` is an example annotation; replace or extend it for your experiment. Use actual tabs, not spaces or commas. Run each target region separately with its matching reads and metadata.
-
-
-## 2. Forward/reverse truncation optimization
-
-Set `trimm_optimal: true`. Each candidate F/R pair is run independently with DADA2 after Cutadapt. Candidate ASVs are classified, then completed candidates are ranked by species-assigned reads per DADA2 input read, species-assigned reads per feature-table read, and non-chimeric reads per input read. The top candidate is sent to downstream taxonomy, phylogeny, and diversity analysis.
-
-“Optimal” means best among the supplied candidates and classifier, not a universal biological optimum. Ranking uses aggregate reads across the dataset.
-
-Region defaults are selected automatically:
-
-- `--region V1V3` → [v1v3_10bp.tsv](params/trimming/v1v3_10bp.tsv)
-- `--region V3V4` → [v3v4_10bp.tsv](params/trimming/v3v4_10bp.tsv)
-
-An external `--trimm_combinations` TSV overrides the region default. It must contain `name`, `trunc_len_f`, and `trunc_len_r`; current validation requires F > R and 10-nt increments. The candidate design requires F+R-20 >= 500 bp for V1V3 and >= 460 bp for V3V4 (DADA2 merge minimum: 12 bp). These design bounds are not verified biological maxima. V1V3 contains 6 candidates and V3V4 contains 10 candidates. Calculations and sources are documented in [params/trimming/README.md](params/trimming/README.md).
-
-## 3. Region and primer selection
-
-| Region | Forward primer (5′→3′) | Reverse primer (5′→3′) |
-|---|---|---|
-| V1V3 | AGAGTTTGATCCTGGCTCAG | ATTACCGCGGCTGCTGG |
-| V3V4 | CCTACGGGNGGCWGCAG | GACTACHVGGGTATCTAATCC |
-
-Use `--region V3V4`, a preset in [params/regions](params/regions), or `--primer_f` / `--primer_r` overrides. Priority is command line > external YAML > region defaults. IUPAC letters are validated and lowercase is accepted. Adapters are reverse complements of the opposite primer unless explicitly supplied.
-
-## 4. Adapting to a research environment
-
-Usually an external YAML is sufficient.
-
-| Purpose | File or parameter |
-|---|---|
-| Container paths | `fastqc_sif`, `multiqc_sif`, `cutadapt_sif`, `qiime_sif` in [nextflow.config](nextflow.config) or YAML |
-| CPU, memory, time, executor | [conf/base.config](conf/base.config), [nextflow.config](nextflow.config), external site config |
-| Region and primer defaults | [lib/PrimerConfig.groovy](lib/PrimerConfig.groovy) |
-| Cutadapt filters | `quality`, `min_length`, [modules/cutadapt.nf](modules/cutadapt.nf) |
-| Fixed DADA2 settings | `dada2_trunc_len_*`, `dada2_max_ee_*`, [modules/qiime_dada2.nf](modules/qiime_dada2.nf) |
-| Candidate execution and ranking | [params/trimming](params/trimming), [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf), [modules/trimm_optimal.nf](modules/trimm_optimal.nf) |
-| Taxonomy | `classifier`, `taxonomy_confidence`, [modules/qiime_taxonomy.nf](modules/qiime_taxonomy.nf) |
-| Phylogeny | [modules/qiime_phylogeny.nf](modules/qiime_phylogeny.nf) |
-| Diversity | `diversity_enabled`, `sampling_depth`, `alpha_max_depth`, [modules/qiime_diversity.nf](modules/qiime_diversity.nf) |
-
-If a command option is hard-coded, update both regular and optimization modules where applicable. Add new parameters to `nextflow.config`, [nextflow_schema.json](nextflow_schema.json), the relevant module, and both language sections of this README.
-
-## 5. Outputs
-
-Results are written below `outdir`: `01_raw_qc`, `02_cutadapt_q20`, `03_clean_qc`, `04_qiime2_import`, `05_dada2`, `06_taxonomy`, `07_phylogeny`, and `08_diversity`. Optimization additionally writes `05_trimm_optimal_dada2/` and `05_trimm_optimal_<LABEL>/selected/`. Review `all_parameter_results.tsv`, `optimal_selection.tsv`, and `optimal_truncation.txt` first.
-
-Do not commit raw reads, QIIME artifacts, containers, work directories, or participant metadata. Synthetic primer tests are documented in [tests/README.md](tests/README.md).
-
----
-
-Illumina paired-end 16S V1V3/V3V4 분석 파이프라인입니다. 핵심 기능은 **forward와 reverse read의 DADA2 절단 길이 조합을 비교하고, 지정한 평가 기준에 따라 최적 조합을 선택**하는 것입니다. 선택된 ASV 결과로 taxonomy, 계통수 및 다양성 분석을 이어갑니다.
-
-분석 흐름: FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 import → DADA2 절단 길이 비교·선택 → taxonomy → MAFFT/FastTree → 다양성 분석.
-
-## 1. 빠른 실행
-
-필요 환경은 Linux, Java 17+, Nextflow 26.04.2(검증 버전), Docker 또는 Singularity/Apptainer입니다. 컨테이너 이미지는 첫 실행 시 자동 다운로드하고 이후 캐시를 재사용합니다. FASTQ, QIIME 2 metadata TSV, classifier QZA는 연구자가 준비합니다. 실행 프로필은 `docker`, `singularity`(기본), `apptainer` 중 하나를 선택합니다.
-
-프로젝트 폴더에 `analysis.yml`을 작성합니다. 실제 데이터 경로와 설정은 저장소 밖에서 관리할 수 있습니다.
-
-```yaml
-region: V3V4
-reads: "/path/to/reads/*_{1,2}.fastq.gz"
-metadata: "/path/to/metadata.tsv"
-classifier: "/path/to/classifier.qza"
-outdir: "/path/to/results"
-run_label: "experiment01"
-
-trimm_optimal: true
-taxonomy_label: SILVA
-taxonomy_confidence: 0.7
-diversity_enabled: true
-sampling_depth: 1000
-```
-
-```bash
-nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
-  -profile singularity \
-  -params-file /path/to/analysis.yml \
-  -work-dir /path/to/work \
-  -resume
-```
-
-- `Sample01_1.fastq.gz` / `Sample01_2.fastq.gz`는 위 패턴으로 입력합니다. `_R1_001` / `_R2_001` 형식은 `*_{R1,R2}_001.fastq.gz`로 바꿉니다.
-- Metadata는 탭으로 구분하고 첫 열을 `sample-id`로 지정합니다. ID는 FASTQ 패턴에서 추출한 ID와 일치해야 합니다.
-
-### Samplesheet와 metadata 준비
-
-현재 버전은 FASTQ 경로를 나열한 **samplesheet CSV 입력(`--input`, `--samplesheet`)을 지원하지 않습니다.** `reads`의 파일명 패턴으로 R1/R2를 묶고, 샘플 정보는 `metadata.tsv`로 받습니다. QIIME 2용 `manifest.tsv`는 Cutadapt 처리 후 자동 생성됩니다.
-
-다음처럼 샘플당 R1/R2 한 쌍을 준비합니다.
-
-```text
-reads/
-  S01_1.fastq.gz
-  S01_2.fastq.gz
-  S02_1.fastq.gz
-  S02_2.fastq.gz
-```
-
-`analysis.yml` 예시 양식입니다. 경로를 실제 파일의 절대 경로로 바꿔 저장하세요.
-
-```yaml
-region: V3V4
-reads: "/absolute/path/to/reads/*_{1,2}.fastq.gz"
-metadata: "/absolute/path/to/metadata.tsv"
-classifier: "/absolute/path/to/classifier.qza"
-outdir: "/absolute/path/to/results"
-run_label: "experiment01"
-trimm_optimal: true
-taxonomy_label: SILVA
-taxonomy_confidence: 0.7
-diversity_enabled: true
-sampling_depth: 1000
-```
-
-V1V3 데이터는 `region: V1V3`로 설정하세요. 영역별 기본 후보를 사용하려면 `trimm_combinations`를 지정하지 않습니다.
-
-위 패턴에서 추출되는 샘플 ID는 `S01`, `S02`입니다. Metadata는 아래처럼 작성합니다. 열 구분자는 실제 탭이어야 합니다.
-
-```tsv
-sample-id	group
-S01	control
-S02	treatment
-```
-
-터미널에서 실제 탭으로 된 예제 파일을 만들려면:
+To create this example with actual tab characters:
 
 ```bash
 printf 'sample-id\tgroup\nS01\tcontrol\nS02\ttreatment\n' > metadata.tsv
 ```
 
-- 첫 열의 샘플 ID는 중복 없이 FASTQ에서 추출된 ID와 정확히 일치해야 합니다.
-- `group`은 예시입니다. 실험에 맞는 조건·배치 등 샘플 정보 열을 추가할 수 있습니다.
-- 파일명이 다르면 `reads` 패턴도 맞춰야 합니다. 가장 간단한 방법은 위의 `샘플ID_1/2.fastq.gz` 형식으로 준비하는 것입니다.
-- V1V3와 V3V4는 해당 영역의 reads와 metadata를 지정해 별도로 실행합니다.
+Set `metadata` in your analysis YAML to the file's absolute path. Sample IDs must be unique and exactly match the IDs extracted from the filenames. Replace or extend the example `group` column with your experiment's conditions and batches. Use tabs, not commas or spaces. Run V1V3 and V3V4 separately with their corresponding reads and metadata.
 
-### 외부 사용자 실행 명령
+<a id="en-primers"></a>
 
-Java 17+, Nextflow와 Docker 또는 Singularity를 준비한 뒤, 저장소를 직접 복제하지 않고 실행할 수 있습니다.
+### 3. Region and primers
+
+The default region is V1V3.
+
+| Region | Forward primer (5′→3′) | Reverse primer (5′→3′) |
+|---|---|---|
+| V1V3 | `AGAGTTTGATCCTGGCTCAG` | `ATTACCGCGGCTGCTGG` |
+| V3V4 | `CCTACGGGNGGCWGCAG` | `GACTACHVGGGTATCTAATCC` |
+
+Choose `--region V3V4`, use a YAML preset from [params/regions](params/regions), or add explicit primer options to your run command:
 
 ```bash
-# 합성 데이터로 primer/Cutadapt 설치 테스트
-nextflow run KitHubb/amplicon_16S_qiime_nf -r main -latest -profile test,docker
-
-# 준비한 analysis.yml과 실제 데이터로 전체 분석
-nextflow run KitHubb/amplicon_16S_qiime_nf -r main -latest \
-  -profile docker \
-  -params-file analysis.yml
+--region V3V4 --primer_f 'CCTACGGGNGGCWGCAG' --primer_r 'GACTACHVGGGTATCTAATCC'
 ```
 
-Singularity 환경에서는 `test,docker`를 `test,singularity`로, `docker`를 `singularity`로 바꿉니다. 합성 테스트는 DADA2 최적화까지 실행하지 않습니다. 동일 분석을 재개할 때는 실행 명령에 `-resume`을 추가하세요.
+**Priority: command line > external parameter YAML > region defaults.** Overriding one primer leaves the other at its region default. See [custom_primers.yml](params/examples/custom_primers.yml) for a YAML example.
 
-### 추가 설정
+Primers accept IUPAC DNA letters, including lowercase. Read-through adapters are the reverse complements of the opposite primers unless `adapter_f` or `adapter_r` is set explicitly. Default V1V3 primers retain the adapters `CCAGCAGCCGCGGTAAT` and `CTGAGCCAGGATCAAACTCT`. The final sequences are printed in the run log.
 
-- Classifier는 사용하는 QIIME 2 환경과 호환되는 artifact를 지정합니다. SILVA 이외의 classifier도 지정할 수 있습니다.
-- 다양성 분석을 생략하려면 `diversity_enabled: false`로 설정합니다. `sampling_depth: 1000`은 기본값이며 연구 데이터의 read 수에 맞게 조정합니다.
-- 재실행 시 같은 work 경로와 `-resume`을 사용합니다. 모듈 호출 구조·옵션·입력이 바뀌면 해당 작업이 다시 실행될 수 있습니다.
+<a id="en-optimization"></a>
 
-## 2. Forward/Reverse 절단 길이 최적화
+### 4. Truncation optimization
 
-`trimm_optimal: true`일 때 활성화됩니다. **코드 기본값은 false**이며, 위 실행 예시는 최적화를 명시적으로 켭니다.
+Set `trimm_optimal: true` to enable candidate comparison. Truncation lengths apply to the reads imported into QIIME 2 after Cutadapt.
 
-1. 후보 TSV의 각 F/R 조합으로 DADA2를 독립 실행합니다. 절단 길이는 Cutadapt 처리 후 QIIME 2에 입력된 reads에 적용됩니다.
-2. 각 후보의 ASV를 지정한 classifier로 분류하고 read 유지율 및 species 분류 지표를 계산합니다.
-3. 완료된 후보를 아래 기준으로 내림차순 정렬합니다. 앞 기준이 같을 때 다음 기준을 사용합니다.
-4. 최상위 후보의 table과 대표 서열을 최종 taxonomy·계통수·다양성 분석에 전달합니다.
+1. Run DADA2 independently for each forward/reverse pair in the candidate TSV.
+2. Classify candidate ASVs and calculate read-retention and species-assignment metrics.
+3. Rank completed candidates by the criteria below, in descending order. Later criteria break ties.
+4. Pass the highest-ranked feature table and representative sequences to taxonomy, phylogeny, and diversity analysis.
 
-| 순위 기준 | 계산 |
-|---|---|
-| 1. `species_input_yield` | species 분류 reads / DADA2 입력 reads × 100 |
-| 2. `species_read_pct` | species 분류 reads / 최종 feature table reads × 100 |
-| 3. `nonchimeric_pct` | non-chimeric reads / DADA2 입력 reads × 100 |
+| Priority | Metric | Calculation |
+|---|---|---|
+| 1 | `species_input_yield` | Species-assigned reads / DADA2 input reads × 100 |
+| 2 | `species_read_pct` | Species-assigned reads / final feature-table reads × 100 |
+| 3 | `nonchimeric_pct` | Non-chimeric reads / DADA2 input reads × 100 |
 
-여기서 “optimal”은 **제공된 후보와 classifier, 현재 순위 기준 안에서 최상위인 조합**입니다. 모든 길이를 탐색하거나 생물학적 정확도를 보장하는 의미는 아닙니다. 선택은 샘플별이 아닌 입력 데이터 전체의 합산 지표를 기준으로 합니다. Species 판정은 taxonomy 문자열의 `s__` 또는 `s:` 표기를 사용하고 unknown·uncultured 등의 이름을 제외합니다.
+“Optimal” means best among the supplied candidates for the chosen classifier and ranking criteria. It does not establish a universal biological optimum. Metrics are aggregated across the dataset, rather than ranked per sample. Species detection uses `s__` or `s:` taxonomy markers and excludes names such as unknown and uncultured.
 
-### 후보 길이 변경
-
-영역별 기본 파일은 [v1v3_10bp.tsv](params/trimming/v1v3_10bp.tsv)와 [v3v4_10bp.tsv](params/trimming/v3v4_10bp.tsv)이며, 각각 6개와 10개 조합이 들어 있습니다. `--region`에 따라 자동 선택하고, 외부 TSV를 `--trimm_combinations /path/to/candidates.tsv` 또는 YAML의 `trimm_combinations`로 지정하면 우선합니다. 문헌 출처, primer 제거 후 길이 가정과 후보별 overlap 계산은 [trimming 설명](params/trimming/README.md)을 참고하세요.
+The region selects [v1v3_10bp.tsv](params/trimming/v1v3_10bp.tsv) (6 candidates) or [v3v4_10bp.tsv](params/trimming/v3v4_10bp.tsv) (10 candidates). Override it with `trimm_combinations: "/path/to/candidates.tsv"` or `--trimm_combinations /path/to/candidates.tsv`:
 
 ```tsv
 name	trunc_len_f	trunc_len_r
@@ -242,50 +151,86 @@ F280_R260	280	260
 F270_R250	270	250
 ```
 
-- 실제 파일은 탭으로 구분하고 후보 이름은 고유하게 지정합니다.
-- 현재 구현은 **F > R**, 두 길이 모두 **10 nt 단위**라는 조건을 검사합니다. 이 제한은 [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf)에서 변경합니다.
-- 기본 후보는 영역에 따라 자동 변경됩니다. 설계 하한은 F+R−20 ≥ 500 bp (V1V3), ≥ 460 bp (V3V4)이며, 일반·최적화 DADA2 모두 최소 overlap 12 bp를 사용합니다. 실제 길이와 품질에 맞춰 후보를 조정하세요.
-- DADA2 또는 후보 taxonomy가 실패하면 해당 후보는 비교에서 빠집니다. 성공한 후보가 하나도 없으면 선택 단계가 실패합니다.
-- `optimal_min_sample_reads` 기본값은 10000입니다. 이보다 낮은 샘플 수와 merge가 0인 샘플 수는 **보고용 지표**이며 후보 제외나 순위 계산에는 사용하지 않습니다.
+Use actual tabs and unique candidate names. Current validation requires **F > R** and both lengths in **10-nt increments**. Default candidate design uses F + R − 20 ≥ 500 bp for V1V3 and ≥ 460 bp for V3V4. Both standard and optimization DADA2 use a minimum overlap of 12 bp. These design bounds are not verified biological maxima; adjust candidates to your read lengths and quality. See the [candidate design notes](params/trimming/README.md) for sources, length assumptions, and overlap calculations.
 
-고정 길이 분석은 `trimm_optimal: false`와 `dada2_trunc_len_f`, `dada2_trunc_len_r`로 실행합니다. 두 길이의 기본값 0은 고정 절단을 하지 않는 설정입니다. 최적화 모드에서는 이 두 옵션 대신 후보 TSV의 길이를 사용합니다.
+Candidates with failed DADA2 or taxonomy tasks are excluded. Selection fails if no candidates succeed. `optimal_min_sample_reads` defaults to 10000: low-read and zero-merge sample counts are reported but do not filter or rank candidates.
 
-## 3. 영역 및 primer 설정
+For fixed-length analysis, set `trimm_optimal: false` and use `dada2_trunc_len_f` and `dada2_trunc_len_r`. Their default value, `0`, disables fixed-length truncation. Optimization uses the TSV lengths instead of these two parameters.
 
-| 영역 | Forward primer (5′→3′) | Reverse primer (5′→3′) |
+<a id="en-containers"></a>
+
+### 5. Containers and cache
+
+Each tool uses a pinned public image unless you supply a local override.
+
+| Tool | Public image | Local SIF/IMG parameter |
 |---|---|---|
-| V1V3 — 기본값 | AGAGTTTGATCCTGGCTCAG | ATTACCGCGGCTGCTGG |
-| V3V4 | CCTACGGGNGGCWGCAG | GACTACHVGGGTATCTAATCC |
+| FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` | `fastqc_sif` |
+| MultiQC | `quay.io/biocontainers/multiqc:1.27--pyhdfd78af_0` | `multiqc_sif` |
+| Cutadapt | `quay.io/biocontainers/cutadapt:5.2--py311hc303176_2` | `cutadapt_sif` |
+| QIIME 2 | `quay.io/qiime2/amplicon:2025.7` | `qiime_sif` |
 
-`--region V3V4`로 선택하거나 [params/regions/](params/regions/)의 YAML을 `-params-file`로 지정합니다. 직접 지정은 다음과 같습니다.
+FastQC and MultiQC use separate images and separate settings. The combined QC image and shared path setting are no longer used. QIIME 2 analysis steps share one QIIME 2 image.
 
-```bash
-# 위 실행 명령에 필요한 옵션만 추가
---region V3V4 --primer_f 'CCTACGGGNGGCWGCAG' --primer_r 'GACTACHVGGGTATCTAATCC'
+To use existing images, add any of these settings to `analysis.yml` or `nextflow_params.yml`:
+
+```yaml
+fastqc_sif: "/absolute/path/to/fastqc.sif"
+multiqc_sif: "/absolute/path/to/multiqc.img"
+cutadapt_sif: "/absolute/path/to/cutadapt.sif"
+qiime_sif: "/absolute/path/to/qiime2.sif"
 ```
 
-우선순위는 **명령줄 > 외부 params YAML > 영역 기본값**입니다. 한쪽 primer만 지정하면 나머지는 해당 영역 기본값을 유지합니다. YAML 예시는 [params/examples/custom_primers.yml](params/examples/custom_primers.yml)을 참고합니다.
+Use `-profile singularity` or `-profile apptainer` for local SIF/IMG files. The image must be readable by that runtime; Docker cannot use these files. Omit a tool's setting to download its public image automatically. A local override takes priority for that tool only.
 
-Primer는 IUPAC DNA 문자로 검사하고 소문자도 허용합니다. Read-through adapter는 반대쪽 primer의 역상보로 계산하며 `adapter_f`, `adapter_r`를 직접 지정하면 해당 값이 우선합니다. V1V3 기본 primer 사용 시 기존 adapter `CCAGCAGCCGCGGTAAT` / `CTGAGCCAGGATCAAACTCT`를 보존합니다. 최종 서열은 실행 로그에 표시됩니다.
+First use requires registry access and enough disk space, especially for QIIME 2. Singularity/Apptainer image references use `docker://`; Docker references omit that prefix. See the [Nextflow container documentation](https://docs.seqera.io/nextflow/container/singularity).
 
-## 4. 연구자 환경에 맞춰 수정할 파일
+Set a persistent Singularity image cache before running:
 
-보통 **외부 `analysis.yml`에 경로와 분석 파라미터를 지정**하면 됩니다. 서버 실행 방식·CPU·메모리는 외부 `site.config`로 덮어쓸 수 있습니다. 저장소 전체의 기본 동작을 바꾸려면 아래 파일을 수정합니다.
+```bash
+export NXF_SINGULARITY_CACHEDIR=/path/to/container-cache
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+```
 
-### 컨테이너와 서버 자원
+For Apptainer, use `NXF_APPTAINER_CACHEDIR`. Docker manages its own image storage. On HPC, use a writable cache shared by all compute nodes. Image cache reuse avoids downloading images again; `-resume` separately controls reuse of completed task results.
 
-| 변경 내용 | 설정 또는 파일 | 설명 |
-|---|---|---|
-| FastQC 환경 | `fastqc_sif` — [nextflow.config](nextflow.config) 또는 외부 YAML | 선택 사항: FastQC 로컬 SIF/IMG 절대 경로. 미지정 시 BioContainers 이미지 사용 |
-| MultiQC 환경 | `multiqc_sif` — 같은 위치 | 선택 사항: MultiQC 로컬 SIF/IMG 절대 경로. 미지정 시 BioContainers 이미지 사용 |
-| Cutadapt 환경 | `cutadapt_sif` — 같은 위치 | 선택 사항: 로컬 SIF 절대 경로. 미지정 시 BioContainers Cutadapt 5.2 사용 |
-| QIIME 2 환경 | `qiime_sif` — 같은 위치 | 선택 사항: 로컬 SIF 절대 경로. 미지정 시 공식 QIIME 2 amplicon 2025.7 이미지 사용 |
-| 기본 CPU·메모리·시간 | [conf/base.config](conf/base.config) | `process_low`: 8 CPU/16 GB/12 h, `process_medium`: 8 CPU/24 GB/24 h, `process_high`: 16 CPU/64 GB/72 h |
-| 로컬/HPC 실행 방식 | [nextflow.config](nextflow.config)의 `process.executor` | 현재 `local`. 스케줄러·queue 설정은 기관 환경에 맞춰 변경 |
-| 컨테이너 실행 설정 | 같은 파일의 `singularity`, `profiles` | Docker, Singularity, Apptainer 선택; `test`와 조합 가능 |
-| 입력·결과·classifier 경로 | 외부 YAML | `reads`, `metadata`, `classifier`, `outdir`; 작업 경로는 CLI `-work-dir` |
+**Existing lab server configuration.** Add these QC paths to your analysis YAML while retaining the reads, metadata, classifier, and other analysis settings:
 
-자원은 작업 하나당 설정입니다. 최적화 후보가 동시에 실행되므로 서버 전체 자원을 고려해야 합니다. 예를 들어 외부 `site.config`에 다음처럼 작성할 수 있습니다.
+```yaml
+fastqc_sif: "/data/software/singularity/quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img"
+multiqc_sif: "/data/software/singularity/quay.io-biocontainers-multiqc-1.27--pyhdfd78af_0.img"
+```
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile singularity -params-file /path/to/nextflow_params.yml
+```
+
+This server also has `/data/software/singularity/amplicon_16S_qc.config` with the same QC paths. To test it:
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile test,singularity \
+  -c /data/software/singularity/amplicon_16S_qc.config
+```
+
+These absolute paths and the config file are specific to this server. Other users should set their own local paths or omit overrides to use automatic downloads.
+
+<a id="en-resources"></a>
+
+### 6. Server resources
+
+Keep data paths and analysis parameters in an external YAML. Use an external `site.config` for the executor, queue, CPU, memory, and time limits. The default executor in [nextflow.config](nextflow.config) is `local`.
+
+[conf/base.config](conf/base.config) defines these per-task defaults:
+
+| Label | CPUs | Memory | Time |
+|---|---|---|---|
+| `process_low` | 8 | 16 GB | 12 h |
+| `process_medium` | 8 | 24 GB | 24 h |
+| `process_high` | 16 | 64 GB | 72 h |
+
+Optimization candidates can run concurrently. Adjust resources for your server and dataset. Example `site.config`:
 
 ```groovy
 process {
@@ -306,98 +251,310 @@ process {
 }
 ```
 
-실행 명령에 `-c /path/to/site.config`를 추가합니다. 위 값은 형식 예시이며 데이터 크기에 맞춰 조정해야 합니다. `maxForks`는 프로세스별 동시 작업 수 제한이므로 모든 프로세스를 합친 전체 동시 작업 수 제한은 아닙니다.
+Add `-c /path/to/site.config` to the run command. The values above illustrate the syntax; they are not suitable for every dataset. `maxForks` limits concurrency per process, not across all processes combined. Set the scheduler and queue to match your institution's HPC configuration. Set the work directory with `-work-dir`.
 
-### 분석 옵션과 도구 명령
+<a id="en-options"></a>
 
-| 변경 목적 | 먼저 사용할 파라미터 | 명령 또는 로직을 직접 바꿀 파일 |
+### 7. Analysis settings and customization
+
+Use parameters first. Edit tool modules when you need to change commands or logic.
+
+| Purpose | Parameters or defaults | Implementation |
 |---|---|---|
-| FastQC·MultiQC 옵션 | 컨테이너 및 CPU 설정 | [modules/fastqc.nf](modules/fastqc.nf), [modules/multiqc.nf](modules/multiqc.nf) |
-| Primer·영역 | `region`, `primer_f/r`, `adapter_f/r` | 기본 서열·역상보·검사: [lib/PrimerConfig.groovy](lib/PrimerConfig.groovy) |
-| Cutadapt 품질 필터 | `quality: 20`, `min_length: 50` | [modules/cutadapt.nf](modules/cutadapt.nf): `-n 2`, `--discard-untrimmed` 등 |
-| QIIME import 방식 | `reads` 입력 패턴 | [modules/qiime_import.nf](modules/qiime_import.nf) |
-| DADA2 고정 길이·오류 허용 | `dada2_trunc_len_f/r: 0`, `dada2_max_ee_f: 2`, `dada2_max_ee_r: 4` | 일반 분석: [modules/qiime_dada2.nf](modules/qiime_dada2.nf) |
-| DADA2 최적화 후보 실행 | `trimm_optimal`, `trimm_combinations`, 동일한 `dada2_max_ee_*` | [modules/trimm_optimal.nf](modules/trimm_optimal.nf)의 `DADA2_TRIMM_SWEEP` |
-| 최적화 순위·species 판정 | `optimal_min_sample_reads`는 보고 기준만 변경 | 같은 파일의 `TAXONOMY_TRIMM_SWEEP`, `SELECT_TRIMM_OPTIMAL` |
-| Taxonomy | `classifier`, `taxonomy_confidence: 0.7`, `taxonomy_label: AUTO` | 최종 분석: [modules/qiime_taxonomy.nf](modules/qiime_taxonomy.nf); 후보 분석: `modules/trimm_optimal.nf` |
-| MAFFT·FastTree 옵션 | 별도 분석 파라미터 없음 | [modules/qiime_phylogeny.nf](modules/qiime_phylogeny.nf) |
-| 다양성·rarefaction | `diversity_enabled`, `sampling_depth: 1000`, `alpha_max_depth: 10000` | [modules/qiime_diversity.nf](modules/qiime_diversity.nf) |
+| FastQC / MultiQC | Image overrides and CPU settings | [fastqc.nf](modules/fastqc.nf), [multiqc.nf](modules/multiqc.nf) |
+| Region, primers, adapters | `region`, `primer_f`, `primer_r`, `adapter_f`, `adapter_r` | [PrimerConfig.groovy](lib/PrimerConfig.groovy) |
+| Cutadapt filtering | `quality: 20`, `min_length: 50` | [cutadapt.nf](modules/cutadapt.nf); includes `-n 2`, `--discard-untrimmed` |
+| QIIME import | `reads` filename pattern | [qiime_import.nf](modules/qiime_import.nf) |
+| Fixed DADA2 | `dada2_trunc_len_f: 0`, `dada2_trunc_len_r: 0`, `dada2_max_ee_f: 2`, `dada2_max_ee_r: 4` | [qiime_dada2.nf](modules/qiime_dada2.nf) |
+| Candidate validation | `trimm_optimal`, `trimm_combinations` | [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf), [params/trimming](params/trimming) |
+| Candidate execution | The same `dada2_max_ee_*` settings | `DADA2_TRIMM_SWEEP` in [modules/trimm_optimal.nf](modules/trimm_optimal.nf) |
+| Ranking and species rules | `optimal_min_sample_reads: 10000` changes reporting only | `TAXONOMY_TRIMM_SWEEP`, `SELECT_TRIMM_OPTIMAL` in the same module |
+| Taxonomy | `classifier`, `taxonomy_confidence: 0.7`, `taxonomy_label: AUTO` | [qiime_taxonomy.nf](modules/qiime_taxonomy.nf) and candidate taxonomy in `modules/trimm_optimal.nf` |
+| MAFFT / FastTree | No separate analysis parameters | [qiime_phylogeny.nf](modules/qiime_phylogeny.nf) |
+| Diversity / rarefaction | `diversity_enabled: true`, `sampling_depth: 1000`, `alpha_max_depth: 10000` | [qiime_diversity.nf](modules/qiime_diversity.nf) |
 
-DADA2의 `trunc-q`, chimera 방식처럼 명령에 고정된 옵션을 바꾸려면 **일반 모듈과 최적화 모듈 양쪽**을 확인해야 합니다. Taxonomy 명령 변경도 후보 평가와 최종 분석에 일관되게 적용합니다. 새 파라미터를 추가한다면 `nextflow.config`, [nextflow_schema.json](nextflow_schema.json), 해당 모듈과 문서를 함께 갱신합니다.
+For hard-coded DADA2 options such as `trunc-q` or chimera handling, check both standard and optimization modules. Keep candidate and final taxonomy commands consistent. When adding a parameter, update [nextflow.config](nextflow.config), [nextflow_schema.json](nextflow_schema.json), the relevant module, and both README language sections.
 
-도구 버전을 변경할 때는 SIF 경로만 교체하는 것으로 충분한지, 모듈의 명령 옵션과 classifier 호환성까지 확인합니다. 최종 연구 분석에는 사용한 컨테이너 버전과 classifier를 함께 기록합니다.
+When changing image versions, check command options and classifier compatibility. Record the image versions and classifier used for the final analysis.
 
-## 5. 결과 확인
+<a id="en-outputs"></a>
 
-| 경로 (`outdir` 아래) | 내용 |
+### 8. Results
+
+All results are written under `outdir`.
+
+| Directory | Contents |
 |---|---|
-| `01_raw_qc/`, `03_clean_qc/` | 처리 전·후 FastQC/MultiQC |
-| `02_cutadapt_q20/` | Primer 제거 FASTQ, Cutadapt 로그·JSON. 폴더명은 quality 설정과 관계없이 고정 |
-| `04_qiime2_import/` | Manifest, paired-end QZA, 품질 요약 |
-| `05_dada2/` | 최적화가 꺼진 일반 DADA2 결과 및 요약 |
-| `05_trimm_optimal_dada2/` | 최적화 후보별 DADA2 결과 |
-| `05_trimm_optimal_<LABEL>/` | 후보별 taxonomy 및 지표 |
-| `05_trimm_optimal_<LABEL>/selected/` | 전체 순위, 선택 길이, 선택된 QZA |
-| `06_taxonomy/` | `taxonomy_<LABEL>.qza`, `taxa-bar-plots_<LABEL>.qzv` 등 |
-| `07_phylogeny/`, `08_diversity/` | 계통수 및 활성화한 경우 다양성 결과 |
+| `01_raw_qc/`, `03_clean_qc/` | FastQC/MultiQC before and after filtering |
+| `02_cutadapt_q20/` | Trimmed FASTQ, Cutadapt logs and JSON; the directory name is fixed even if `quality` changes |
+| `04_qiime2_import/` | Manifest, paired-end QZA, quality summary |
+| `05_dada2/` | Standard DADA2 results and summaries when optimization is disabled |
+| `05_trimm_optimal_dada2/` | DADA2 outputs for each candidate |
+| `05_trimm_optimal_<LABEL>/` | Candidate taxonomy and metrics |
+| `05_trimm_optimal_<LABEL>/selected/` | Full ranking, selected lengths, selected QZA files |
+| `06_taxonomy/` | Outputs such as `taxonomy_<LABEL>.qza` and `taxa-bar-plots_<LABEL>.qzv` |
+| `07_phylogeny/`, `08_diversity/` | Phylogeny and, if enabled, diversity results |
 
-최적화 후에는 다음 파일을 먼저 확인합니다.
+After optimization, review:
 
-- `all_parameter_results.tsv`: 성공한 후보의 전체 순위와 지표.
-- `optimal_selection.tsv`, `optimal_truncation.txt`: 선택된 F/R 길이와 평가 결과.
-- `selected-table.qza`, `selected-rep-seqs.qza`, `selected-denoising-stats.qza`: 후속 분석에 사용한 결과.
+- `all_parameter_results.tsv`: rankings and metrics for successful candidates.
+- `optimal_selection.tsv` and `optimal_truncation.txt`: selected F/R lengths and scores.
+- `selected-table.qza`, `selected-rep-seqs.qza`, and `selected-denoising-stats.qza`: artifacts passed to downstream analysis.
 
-`taxonomy_label: AUTO`는 classifier 경로에서 SILVA/GG2/GTDB 등을 추론합니다. 연구자가 `SILVA`, `GG2` 등의 값을 직접 지정해 결과를 구분할 수도 있습니다. 최적화 모드에는 일반 모드의 `05_dada2/table-summary.qzv`가 생성되지 않으므로 선택된 table과 stats를 확인해 다양성 분석 깊이를 결정합니다.
+`taxonomy_label: AUTO` infers labels such as SILVA, GG2, or GTDB from the classifier path. Set an explicit label to distinguish analyses. Optimization does not generate the standard-mode `05_dada2/table-summary.qzv`; inspect the selected table and stats when choosing diversity depth.
 
-## 6. 코드 구조와 검증
+Keep raw reads, QIIME artifacts, container images, work directories, and participant metadata out of Git.
 
-```text
-main.nf                  # 전체 단계 연결, 분기 및 입력 확인
-nextflow.config          # 공통 기본값·컨테이너·실행 설정
-nextflow_schema.json     # 파라미터 명세
-conf/base.config         # 작업 자원 기본값
-lib/PrimerConfig.groovy  # 영역별 primer 및 adapter 해석
-params/
-  regions/               # V1V3, V3V4 선택용 YAML
-  examples/              # 사용자 primer YAML 예시
-  trimming/              # 기본 F/R 후보 TSV
-modules/                 # 각 분석 도구의 실제 process 명령
-subworkflows/
-  qc.nf                  # raw/clean 공통 FastQC → MultiQC
-  trimm_optimal.nf        # 후보 입력 → 실행 → 비교·선택 연결
-tests/                   # 합성 FASTQ와 primer 회귀 테스트
+<a id="en-tests"></a>
+
+### 9. Tests and releases
+
+Run the bundled synthetic test without biological input data, metadata, or a classifier:
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile test,docker
 ```
 
-단일 도구는 `main.nf`에서 모듈을 직접 호출합니다. 여러 단계를 연결하는 QC와 절단 길이 최적화만 subworkflow로 유지합니다.
+Use `test,singularity` or `test,apptainer` for those runtimes. In a local checkout, also run the output verifier:
 
-Primer 테스트 실행 방법은 [tests/README.md](tests/README.md)에 있습니다. 이 테스트는 기본 primer, 덮어쓰기 우선순위, adapter 계산과 합성 FASTQ trimming을 확인하며, 전체 QIIME 2 분석이나 최적 조합의 생물학적 타당성을 검증하는 테스트는 아닙니다.
+```bash
+nextflow run . -profile test,singularity
+python3 tests/check_containers.py results/primer-test
+```
 
-## Containers and CI / 컨테이너와 CI
+A successful run completes five tasks across four images:
 
-Each process in `modules/*.nf` declares a versioned public container:
+| Task | Check |
+|---|---|
+| Cutadapt | Primer assertions and actual trimming; each mate must contain one 60-base T sequence |
+| FastQC | Generate reports from the trimmed reads |
+| MultiQC | Combine FastQC results into a report |
+| QIIME import | Import paired reads and generate a demux summary |
+| QIIME plugin check | Load required DADA2, feature-classifier, phylogeny, diversity, and taxa actions |
 
-| Tool | Image | Local SIF/IMG parameter |
+Reports are in `results/primer-test/container_qc/`, QIIME artifacts in `results/primer-test/04_qiime2_import/`, and the plugin log in `results/primer-test/container_checks/qiime-container.txt`.
+
+Omit local image overrides to check public image retrieval. Set a new writable image-cache directory to test a cold cache. Rerun without `-resume` to execute tools again using cached images. Full DADA2, classification, phylogeny, diversity, and biological validity of the selected truncation pair are outside this test's coverage. See [tests/README.md](tests/README.md) for YAML/CLI precedence checks.
+
+[GitHub Actions](.github/workflows/ci.yml) runs the Docker test and output verifier on pushes and pull requests. A `v*` tag publishes a GitHub release only after that tag's test passes. See [CHANGELOG.md](CHANGELOG.md) for release changes.
+
+<a id="en-structure"></a>
+
+### 10. Code structure
+
+| Path | Purpose |
+|---|---|
+| [main.nf](main.nf) | Stage connections, branching, and input checks |
+| [nextflow.config](nextflow.config) | Default parameters, containers, and runtime profiles |
+| [nextflow_schema.json](nextflow_schema.json) | Parameter schema |
+| [conf/base.config](conf/base.config) | Default task resources |
+| [lib/PrimerConfig.groovy](lib/PrimerConfig.groovy) | Region primers and adapter resolution |
+| [params/regions/](params/regions/) | Region preset YAML files |
+| [params/examples/](params/examples/) | Custom primer YAML example |
+| [params/trimming/](params/trimming/) | Default F/R candidate TSV files and design notes |
+| [modules/](modules/) | Tool process commands |
+| [subworkflows/qc.nf](subworkflows/qc.nf) | Shared raw/clean FastQC → MultiQC workflow |
+| [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf) | Candidate input, execution, ranking, and selection |
+| [tests/](tests/) | Synthetic FASTQ, primer/container tests, output verifiers |
+
+Individual tools are called from `main.nf`. QC and truncation optimization remain subworkflows because they connect multiple steps.
+
+---
+
+<a id="korean"></a>
+
+## 한국어
+
+### 목차
+
+1. [빠른 실행](#ko-start)
+2. [FASTQ와 샘플 정보](#ko-inputs)
+3. [영역과 프라이머](#ko-primers)
+4. [절단 길이 최적화](#ko-optimization)
+5. [컨테이너와 캐시](#ko-containers)
+6. [서버 자원 설정](#ko-resources)
+7. [분석 설정과 코드 수정](#ko-options)
+8. [결과 확인](#ko-outputs)
+9. [테스트와 릴리스](#ko-tests)
+10. [코드 구조](#ko-structure)
+
+<a id="ko-start"></a>
+
+### 1. 빠른 실행
+
+Illumina paired-end 16S rRNA의 V1V3 또는 V3V4 영역을 분석하는 파이프라인입니다. DADA2의 forward/reverse 절단 길이를 비교해 완료된 후보 중 가장 높은 순위의 조합을 선택하고, 해당 ASV로 후속 분석을 진행할 수 있습니다.
+
+**분석 흐름:** FASTQ → FastQC/MultiQC → Cutadapt → FastQC/MultiQC → QIIME 2 가져오기 → DADA2(고정 길이 또는 후보 비교) → 분류 → MAFFT/FastTree → 다양성 분석.
+
+Linux, Java 17+, Nextflow 26.04.2 이상(검증 버전: 26.04.2)과 Docker·Singularity·Apptainer 중 하나를 준비합니다. 입력 데이터는 FASTQ, metadata TSV, QIIME 2 amplicon 2025.7과 호환되는 classifier QZA입니다. SILVA, GG2 등 호환되는 분류기를 사용할 수 있습니다.
+
+저장소 밖에 `analysis.yml`을 작성합니다. 파일명은 `nextflow_params.yml`로 정해도 됩니다. 아래 경로를 실제 경로로 바꾸세요.
+
+```yaml
+region: V3V4
+reads: "/path/to/reads/*_{1,2}.fastq.gz"
+metadata: "/path/to/metadata.tsv"
+classifier: "/path/to/classifier.qza"
+outdir: "/path/to/results"
+run_label: "experiment01"
+trimm_optimal: true
+taxonomy_label: SILVA
+taxonomy_confidence: 0.7
+diversity_enabled: true
+sampling_depth: 1000
+```
+
+저장소를 복제하지 않고 GitHub에서 릴리스 버전을 바로 실행할 수 있습니다.
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile singularity \
+  -params-file /path/to/analysis.yml \
+  -work-dir /path/to/work
+```
+
+실행 환경에 따라 `-profile docker`, `-profile singularity`(기본 실행 환경), `-profile apptainer`를 선택합니다. 이미지는 첫 실행 때 내려받고 이후 캐시를 재사용합니다. 분석 도구를 서버에 각각 설치할 필요는 없습니다.
+
+저장소를 로컬에 복제했다면 다음과 같이 실행합니다.
+
+```bash
+nextflow run /path/to/amplicon_16S_qiime_nf/main.nf \
+  -profile singularity -params-file /path/to/analysis.yml \
+  -work-dir /path/to/work
+```
+
+V1V3 데이터는 `region: V1V3`로 설정합니다. 영역별 기본 후보를 사용하려면 `trimm_combinations`를 생략합니다. 위 예시는 최적화를 켠 설정이며, 코드의 `trimm_optimal` 기본값은 `false`입니다.
+
+다양성 분석을 생략하려면 `diversity_enabled: false`로 설정합니다. `sampling_depth`는 샘플별 read 수에 맞게 조정하세요. 분석을 재개할 때는 같은 실행 폴더와 작업 폴더를 유지하고 `-resume`을 추가합니다. 입력·옵션·모듈 구조가 바뀌면 해당 작업이 다시 실행될 수 있습니다. 최신 개발 코드는 `-r v0.1.0` 대신 `-r main -latest`로 실행합니다.
+
+<a id="ko-inputs"></a>
+
+### 2. FASTQ와 샘플 정보
+
+`reads`의 파일명 패턴으로 read 쌍을 묶고, `metadata`로 샘플 정보를 읽습니다. **FASTQ 경로를 나열한 CSV samplesheet(`--input`, `--samplesheet`)는 지원하지 않습니다.** QIIME 2 가져오기에 쓰는 manifest는 Cutadapt 처리 후 자동 생성합니다.
+
+샘플마다 R1/R2 한 쌍을 준비합니다.
+
+```text
+reads/
+  S01_1.fastq.gz
+  S01_2.fastq.gz
+  S02_1.fastq.gz
+  S02_2.fastq.gz
+```
+
+위 파일은 `reads: "/path/to/reads/*_{1,2}.fastq.gz"`로 지정합니다. 추출되는 샘플 ID는 `S01`, `S02`입니다. 파일명이 `_R1_001.fastq.gz`, `_R2_001.fastq.gz`로 끝나면 `*_{R1,R2}_001.fastq.gz` 패턴을 사용하세요.
+
+첫 열이 `sample-id`인 탭 구분 샘플 정보 파일을 준비합니다.
+
+```tsv
+sample-id	group
+S01	control
+S02	treatment
+```
+
+터미널에서 실제 탭 문자가 들어간 예제 파일을 만들려면 다음 명령을 사용합니다.
+
+```bash
+printf 'sample-id\tgroup\nS01\tcontrol\nS02\ttreatment\n' > metadata.tsv
+```
+
+분석 YAML의 `metadata`에 파일의 절대 경로를 지정합니다. 샘플 ID는 중복 없이 파일명에서 추출한 ID와 정확히 일치해야 합니다. `group`은 예시이므로 실험 조건·배치 등의 열로 바꾸거나 확장하세요. 열 구분자는 쉼표나 공백이 아닌 탭입니다. V1V3와 V3V4는 각 영역에 해당하는 reads와 metadata로 나누어 실행합니다.
+
+<a id="ko-primers"></a>
+
+### 3. 영역과 프라이머
+
+기본 영역은 V1V3입니다.
+
+| 영역 | Forward 프라이머 (5′→3′) | Reverse 프라이머 (5′→3′) |
+|---|---|---|
+| V1V3 | `AGAGTTTGATCCTGGCTCAG` | `ATTACCGCGGCTGCTGG` |
+| V3V4 | `CCTACGGGNGGCWGCAG` | `GACTACHVGGGTATCTAATCC` |
+
+`--region V3V4`로 선택하거나 [params/regions](params/regions)의 YAML을 사용합니다. 직접 지정하려면 실행 명령에 다음 옵션을 추가하세요.
+
+```bash
+--region V3V4 --primer_f 'CCTACGGGNGGCWGCAG' --primer_r 'GACTACHVGGGTATCTAATCC'
+```
+
+**적용 우선순위: 명령줄 > 외부 파라미터 YAML > 영역 기본값.** 한쪽 프라이머만 지정하면 나머지는 해당 영역의 기본값을 사용합니다. YAML 예시는 [custom_primers.yml](params/examples/custom_primers.yml)을 참고하세요.
+
+프라이머는 소문자를 포함한 IUPAC DNA 문자를 허용합니다. Read-through adapter는 반대쪽 프라이머의 역상보 서열로 계산하며, `adapter_f` 또는 `adapter_r`를 직접 지정하면 그 값을 사용합니다. V1V3 기본 프라이머의 adapter는 `CCAGCAGCCGCGGTAAT`, `CTGAGCCAGGATCAAACTCT`입니다. 최종 서열은 실행 로그에 표시합니다.
+
+<a id="ko-optimization"></a>
+
+### 4. 절단 길이 최적화
+
+`trimm_optimal: true`로 후보 비교를 활성화합니다. 절단 길이는 Cutadapt 처리 후 QIIME 2로 가져온 reads에 적용합니다.
+
+1. 후보 TSV의 forward/reverse 조합마다 DADA2를 독립 실행합니다.
+2. 후보별 ASV를 분류하고 read 유지율과 species 분류 지표를 계산합니다.
+3. 완료된 후보를 아래 기준으로 내림차순 정렬합니다. 앞 기준이 같으면 다음 기준으로 비교합니다.
+4. 최상위 후보의 feature table과 대표 서열로 분류·계통수·다양성 분석을 진행합니다.
+
+| 우선순위 | 지표 | 계산 |
+|---|---|---|
+| 1 | `species_input_yield` | Species로 분류된 reads / DADA2 입력 reads × 100 |
+| 2 | `species_read_pct` | Species로 분류된 reads / 최종 feature table reads × 100 |
+| 3 | `nonchimeric_pct` | Non-chimeric reads / DADA2 입력 reads × 100 |
+
+여기서 “최적”은 지정한 분류기와 순위 기준에 따라 제공된 후보 중 가장 높은 순위라는 뜻입니다. 보편적인 생물학적 최적값을 보장하지 않습니다. 샘플별 순위가 아닌 전체 데이터의 합산 지표를 사용합니다. Species 판정에는 taxonomy의 `s__` 또는 `s:` 표기를 사용하며 unknown, uncultured 등의 이름은 제외합니다.
+
+영역에 따라 [v1v3_10bp.tsv](params/trimming/v1v3_10bp.tsv)의 6개 후보 또는 [v3v4_10bp.tsv](params/trimming/v3v4_10bp.tsv)의 10개 후보를 사용합니다. 다른 후보를 쓰려면 `trimm_combinations: "/path/to/candidates.tsv"` 또는 `--trimm_combinations /path/to/candidates.tsv`로 지정합니다.
+
+```tsv
+name	trunc_len_f	trunc_len_r
+F280_R270	280	270
+F280_R260	280	260
+F270_R250	270	250
+```
+
+열은 실제 탭으로 구분하고 후보 이름은 고유하게 지정합니다. 현재 코드는 **F > R**, 두 길이 모두 **10 nt 단위**인지 확인합니다. 기본 후보의 설계 기준은 V1V3에서 F + R − 20 ≥ 500 bp, V3V4에서 ≥ 460 bp입니다. 일반·최적화 DADA2 모두 최소 overlap은 12 bp입니다. 이 설계 기준이 검증된 생물학적 최대 길이를 뜻하지는 않으므로 실제 read 길이와 품질에 맞춰 조정하세요. 출처·길이 가정·overlap 계산은 [후보 설계 설명](params/trimming/README.md)에 정리되어 있습니다.
+
+DADA2 또는 분류 작업이 실패한 후보는 비교에서 제외합니다. 성공한 후보가 없으면 선택 단계가 실패합니다. `optimal_min_sample_reads` 기본값은 10000이며, 기준보다 read가 적은 샘플 수와 merge가 0인 샘플 수는 보고용입니다. 후보 제외나 순위 계산에는 사용하지 않습니다.
+
+고정 길이로 분석하려면 `trimm_optimal: false`와 `dada2_trunc_len_f`, `dada2_trunc_len_r`를 사용합니다. 두 길이의 기본값 `0`은 고정 길이 절단을 하지 않는다는 뜻입니다. 최적화 모드에서는 이 두 파라미터 대신 TSV의 길이를 사용합니다.
+
+<a id="ko-containers"></a>
+
+### 5. 컨테이너와 캐시
+
+도구별 로컬 경로를 지정하지 않으면 아래 버전의 공개 이미지를 사용합니다.
+
+| 도구 | 공개 이미지 | 로컬 SIF/IMG 파라미터 |
 |---|---|---|
 | FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` | `fastqc_sif` |
 | MultiQC | `quay.io/biocontainers/multiqc:1.27--pyhdfd78af_0` | `multiqc_sif` |
 | Cutadapt | `quay.io/biocontainers/cutadapt:5.2--py311hc303176_2` | `cutadapt_sif` |
 | QIIME 2 | `quay.io/qiime2/amplicon:2025.7` | `qiime_sif` |
 
-Singularity/Apptainer directives use `docker://`; Docker uses the same image without that prefix, as required by [Nextflow](https://docs.seqera.io/nextflow/container/singularity). The runtime itself must already be installed. First use requires registry access and enough disk space, especially for QIIME 2. For a reusable Singularity cache, set `NXF_SINGULARITY_CACHEDIR` to a writable directory (shared across compute nodes on HPC); for Apptainer use `NXF_APPTAINER_CACHEDIR`.
+FastQC와 MultiQC는 이미지와 설정을 각각 따로 사용합니다. 통합 QC 이미지와 공통 경로 설정은 더 이상 사용하지 않습니다. QIIME 2 분석 단계는 하나의 QIIME 2 이미지를 공유합니다.
 
-이미 보유한 로컬 SIF/IMG가 있다면 외부 `analysis.yml` 또는 `nextflow_params.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. FastQC와 MultiQC 이미지는 각각 독립적으로 지정합니다. 생략한 도구만 공개 이미지를 사용합니다. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
+보유한 이미지를 사용하려면 필요한 항목을 `analysis.yml` 또는 `nextflow_params.yml`에 추가합니다.
 
 ```yaml
-# Optional local overrides; omit these to download public images automatically.
 fastqc_sif: "/absolute/path/to/fastqc.sif"
 multiqc_sif: "/absolute/path/to/multiqc.img"
-cutadapt_sif: "/absolute/path/to/read_cleanup_cutadapt-5.2.sif"
-qiime_sif: "/absolute/path/to/qiime2_amplicon_2025.7.sif"
+cutadapt_sif: "/absolute/path/to/cutadapt.sif"
+qiime_sif: "/absolute/path/to/qiime2.sif"
 ```
 
-FastQC와 MultiQC는 각각 별도의 이미지로 실행합니다. 기존 통합 QC 이미지와 공통 경로 설정은 사용하지 않습니다. QIIME 2 분석 단계들은 하나의 QIIME 2 이미지를 공유합니다.
+로컬 SIF/IMG 파일은 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 해당 실행 환경에서 읽을 수 있는 이미지여야 하며, Docker는 이 파일을 사용할 수 없습니다. 경로를 생략한 도구는 공개 이미지를 자동으로 내려받습니다. 로컬 경로를 지정하면 해당 도구에만 우선 적용합니다.
 
-서버의 `/data/software/singularity/`에 저장한 개별 BioContainers 이미지를 사용하려면 기존 분석 YAML에 다음 두 항목을 넣습니다. FASTQ, metadata, classifier 등 기존 분석 설정은 함께 유지합니다.
+첫 실행에는 이미지 저장소 접속과 충분한 디스크 공간이 필요합니다. 특히 QIIME 2 이미지의 용량을 고려하세요. Singularity/Apptainer 이미지 주소에는 `docker://`를 붙이고 Docker에서는 생략합니다. 자세한 내용은 [Nextflow 컨테이너 문서](https://docs.seqera.io/nextflow/container/singularity)를 참고하세요.
+
+실행 전에 Singularity 이미지 캐시 경로를 지정하면 여러 분석에서 재사용할 수 있습니다.
+
+```bash
+export NXF_SINGULARITY_CACHEDIR=/path/to/container-cache
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+```
+
+Apptainer는 `NXF_APPTAINER_CACHEDIR`를 사용합니다. Docker의 이미지 저장 공간은 Docker가 관리합니다. HPC에서는 모든 계산 노드가 접근할 수 있고 쓰기 가능한 캐시를 사용하세요. 이미지 캐시는 재다운로드를 줄이는 기능이며, 완료된 분석 결과를 재사용하는 `-resume`과는 별개입니다.
+
+**현재 연구실 서버 설정.** 기존 분석 YAML에 아래 QC 경로를 넣습니다. reads·metadata·classifier 등 나머지 분석 설정은 함께 유지합니다.
 
 ```yaml
 fastqc_sif: "/data/software/singularity/quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img"
@@ -409,7 +566,7 @@ nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
   -profile singularity -params-file /path/to/nextflow_params.yml
 ```
 
-이 서버에는 동일한 QC 경로를 담은 `/data/software/singularity/amplicon_16S_qc.config`도 준비되어 있습니다. 이 파일로 QC 컨테이너를 테스트하려면:
+이 서버에는 동일한 QC 경로를 담은 `/data/software/singularity/amplicon_16S_qc.config`도 있습니다. 다음 명령으로 테스트할 수 있습니다.
 
 ```bash
 nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
@@ -417,17 +574,150 @@ nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
   -c /data/software/singularity/amplicon_16S_qc.config
 ```
 
-위 절대 경로와 서버용 config는 해당 서버 전용입니다. 외부 사용자는 자신의 이미지 경로를 지정하거나 로컬 이미지 설정을 생략하여 공개 이미지를 자동 다운로드합니다.
+위 절대 경로와 config 파일은 해당 서버 전용입니다. 외부 사용자는 자신의 로컬 경로를 지정하거나 경로 설정을 생략해 자동 다운로드를 사용하세요.
 
-Run the synthetic primer and all-container smoke tests without biological input data:
+<a id="ko-resources"></a>
 
-```bash
-nextflow run . -profile test,docker
-python3 tests/check_containers.py results/primer-test
-# HPC alternative:
-nextflow run . -profile test,singularity
+### 6. 서버 자원 설정
+
+데이터 경로와 분석 파라미터는 외부 YAML에 둡니다. 실행 방식·queue·CPU·메모리·시간 제한은 외부 `site.config`로 설정합니다. [nextflow.config](nextflow.config)의 기본 실행 방식은 `local`입니다.
+
+[conf/base.config](conf/base.config)에 정의된 작업 하나당 기본 자원은 다음과 같습니다.
+
+| 라벨 | CPU 수 | 메모리 | 시간 |
+|---|---|---|---|
+| `process_low` | 8 | 16 GB | 12 h |
+| `process_medium` | 8 | 24 GB | 24 h |
+| `process_high` | 16 | 64 GB | 72 h |
+
+최적화 후보는 동시에 실행될 수 있으므로 서버와 데이터 크기에 맞춰 자원을 조정하세요. 다음은 `site.config` 예시입니다.
+
+```groovy
+process {
+    executor = 'local'
+    maxForks = 1
+    withLabel: process_low {
+        cpus = 2
+        memory = '4 GB'
+    }
+    withLabel: process_medium {
+        cpus = 4
+        memory = '8 GB'
+    }
+    withLabel: process_high {
+        cpus = 8
+        memory = '32 GB'
+    }
+}
 ```
 
-`test` checks all four public images: real Cutadapt trimming, FastQC, MultiQC, QIIME 2 import and demux summary, plus availability of required QIIME plugin actions. The verifier checks trimmed sequences and generated reports/artifacts. It does not run full DADA2, taxonomy, phylogeny, or diversity analyses. Images are downloaded on first use and cached for subsequent runs. See [tests/README.md](tests/README.md) for YAML/CLI precedence testing.
+실행 명령에 `-c /path/to/site.config`를 추가합니다. 위 수치는 문법 예시이며 모든 데이터에 적합한 값은 아닙니다. `maxForks`는 프로세스별 동시 작업 수를 제한하며, 전체 프로세스를 합친 동시 작업 수 제한은 아닙니다. HPC의 스케줄러와 queue는 기관 환경에 맞춰 지정합니다. 작업 폴더는 `-work-dir`로 설정합니다.
 
-[GitHub Actions](.github/workflows/ci.yml) runs this regression and output verification on every push and pull request. A `v*` tag publishes a GitHub release only after that tag's test passes.
+<a id="ko-options"></a>
+
+### 7. 분석 설정과 코드 수정
+
+먼저 파라미터로 조정하고, 명령이나 로직을 바꿔야 할 때 도구 모듈을 수정합니다.
+
+| 변경 목적 | 파라미터 또는 기본값 | 구현 위치 |
+|---|---|---|
+| FastQC / MultiQC | 개별 이미지 경로와 CPU 설정 | [fastqc.nf](modules/fastqc.nf), [multiqc.nf](modules/multiqc.nf) |
+| 영역·프라이머·adapter | `region`, `primer_f`, `primer_r`, `adapter_f`, `adapter_r` | [PrimerConfig.groovy](lib/PrimerConfig.groovy) |
+| Cutadapt 필터 | `quality: 20`, `min_length: 50` | [cutadapt.nf](modules/cutadapt.nf); `-n 2`, `--discard-untrimmed` 등 |
+| QIIME 가져오기 | `reads` 파일명 패턴 | [qiime_import.nf](modules/qiime_import.nf) |
+| 고정 길이 DADA2 | `dada2_trunc_len_f: 0`, `dada2_trunc_len_r: 0`, `dada2_max_ee_f: 2`, `dada2_max_ee_r: 4` | [qiime_dada2.nf](modules/qiime_dada2.nf) |
+| 후보 조건 검사 | `trimm_optimal`, `trimm_combinations` | [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf), [params/trimming](params/trimming) |
+| 후보 실행 | 동일한 `dada2_max_ee_*` 설정 | [modules/trimm_optimal.nf](modules/trimm_optimal.nf)의 `DADA2_TRIMM_SWEEP` |
+| 순위·species 판정 | `optimal_min_sample_reads: 10000`은 보고 기준만 변경 | 같은 모듈의 `TAXONOMY_TRIMM_SWEEP`, `SELECT_TRIMM_OPTIMAL` |
+| 분류 | `classifier`, `taxonomy_confidence: 0.7`, `taxonomy_label: AUTO` | [qiime_taxonomy.nf](modules/qiime_taxonomy.nf)와 `modules/trimm_optimal.nf`의 후보 분류 |
+| MAFFT / FastTree | 별도 분석 파라미터 없음 | [qiime_phylogeny.nf](modules/qiime_phylogeny.nf) |
+| 다양성·rarefaction | `diversity_enabled: true`, `sampling_depth: 1000`, `alpha_max_depth: 10000` | [qiime_diversity.nf](modules/qiime_diversity.nf) |
+
+DADA2의 `trunc-q`나 chimera 처리처럼 명령에 고정된 옵션은 일반 모듈과 최적화 모듈을 모두 확인합니다. 후보 분류와 최종 분류 명령도 일관되게 유지하세요. 파라미터를 추가하면 [nextflow.config](nextflow.config), [nextflow_schema.json](nextflow_schema.json), 해당 모듈, README의 두 언어 설명을 함께 갱신합니다.
+
+이미지 버전을 바꿀 때는 명령 옵션과 분류기 호환성을 확인합니다. 최종 분석에 사용한 이미지 버전과 분류기는 함께 기록하세요.
+
+<a id="ko-outputs"></a>
+
+### 8. 결과 확인
+
+모든 결과는 `outdir` 아래에 저장합니다.
+
+| 폴더 | 내용 |
+|---|---|
+| `01_raw_qc/`, `03_clean_qc/` | 필터링 전·후 FastQC/MultiQC |
+| `02_cutadapt_q20/` | 처리된 FASTQ, Cutadapt 로그·JSON. `quality`를 바꿔도 폴더명은 고정 |
+| `04_qiime2_import/` | Manifest, paired-end QZA, 품질 요약 |
+| `05_dada2/` | 최적화를 끈 일반 DADA2 결과와 요약 |
+| `05_trimm_optimal_dada2/` | 후보별 DADA2 결과 |
+| `05_trimm_optimal_<LABEL>/` | 후보별 분류 결과와 지표 |
+| `05_trimm_optimal_<LABEL>/selected/` | 전체 순위, 선택 길이, 선택된 QZA |
+| `06_taxonomy/` | `taxonomy_<LABEL>.qza`, `taxa-bar-plots_<LABEL>.qzv` 등 |
+| `07_phylogeny/`, `08_diversity/` | 계통수와 활성화한 경우 다양성 결과 |
+
+최적화 후에는 다음 파일을 먼저 확인합니다.
+
+- `all_parameter_results.tsv`: 성공한 후보의 순위와 평가 지표.
+- `optimal_selection.tsv`, `optimal_truncation.txt`: 선택된 F/R 길이와 점수.
+- `selected-table.qza`, `selected-rep-seqs.qza`, `selected-denoising-stats.qza`: 후속 분석에 전달한 산출물.
+
+`taxonomy_label: AUTO`는 classifier 경로에서 SILVA·GG2·GTDB 등의 라벨을 추론합니다. 분석을 구분하려면 라벨을 직접 지정하세요. 최적화 모드에서는 일반 모드의 `05_dada2/table-summary.qzv`를 생성하지 않습니다. 다양성 분석 깊이는 선택된 table과 stats를 확인해 정합니다.
+
+원시 reads, QIIME 산출물, 컨테이너 이미지, 작업 폴더, 참여자 정보는 Git에 올리지 않습니다.
+
+<a id="ko-tests"></a>
+
+### 9. 테스트와 릴리스
+
+실제 연구 데이터·샘플 정보·분류기 없이 제공된 합성 데이터로 테스트할 수 있습니다.
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile test,docker
+```
+
+실행 환경에 따라 `test,singularity` 또는 `test,apptainer`로 바꿉니다. 로컬에 저장소가 있다면 결과 검증도 실행하세요.
+
+```bash
+nextflow run . -profile test,singularity
+python3 tests/check_containers.py results/primer-test
+```
+
+정상 실행 시 이미지 4종으로 다음 작업 5개를 완료합니다.
+
+| 작업 | 확인 내용 |
+|---|---|
+| Cutadapt | 프라이머 조건 검사와 실제 절단. 각 mate에 60개의 T로 된 서열 한 개가 남는지 확인 |
+| FastQC | 처리된 reads의 보고서 생성 |
+| MultiQC | FastQC 결과를 통합한 보고서 생성 |
+| QIIME 가져오기 | Paired reads를 가져오고 demux 요약 생성 |
+| QIIME 플러그인 검사 | 필요한 DADA2·feature-classifier·phylogeny·diversity·taxa 명령 로딩 |
+
+보고서는 `results/primer-test/container_qc/`, QIIME 산출물은 `results/primer-test/04_qiime2_import/`, 플러그인 로그는 `results/primer-test/container_checks/qiime-container.txt`에 저장합니다.
+
+공개 이미지 다운로드를 확인하려면 로컬 이미지 경로를 생략합니다. 빈 캐시에서 확인하려면 새로 만든 쓰기 가능한 이미지 캐시 폴더를 지정하세요. 캐시된 이미지로 도구를 다시 실행하려면 `-resume` 없이 재실행합니다. 전체 DADA2·분류·계통수·다양성 분석과 선택 길이의 생물학적 타당성은 이 테스트의 검증 범위가 아닙니다. YAML과 명령줄의 우선순위 검사는 [tests/README.md](tests/README.md)를 참고하세요.
+
+[GitHub Actions](.github/workflows/ci.yml)는 push와 pull request마다 Docker 테스트와 결과 검증을 실행합니다. `v*` 태그의 테스트가 통과하면 GitHub 릴리스를 게시합니다. 버전별 변경은 [CHANGELOG.md](CHANGELOG.md)에서 확인할 수 있습니다.
+
+<a id="ko-structure"></a>
+
+### 10. 코드 구조
+
+| 경로 | 역할 |
+|---|---|
+| [main.nf](main.nf) | 단계 연결·분기·입력 확인 |
+| [nextflow.config](nextflow.config) | 기본 파라미터·컨테이너·실행 프로필 |
+| [nextflow_schema.json](nextflow_schema.json) | 파라미터 명세 |
+| [conf/base.config](conf/base.config) | 작업 자원 기본값 |
+| [lib/PrimerConfig.groovy](lib/PrimerConfig.groovy) | 영역별 프라이머와 adapter 해석 |
+| [params/regions/](params/regions/) | 영역 선택용 YAML |
+| [params/examples/](params/examples/) | 사용자 프라이머 YAML 예시 |
+| [params/trimming/](params/trimming/) | 기본 F/R 후보 TSV와 설계 설명 |
+| [modules/](modules/) | 도구별 실행 명령 |
+| [subworkflows/qc.nf](subworkflows/qc.nf) | 처리 전·후 공통 FastQC → MultiQC 흐름 |
+| [subworkflows/trimm_optimal.nf](subworkflows/trimm_optimal.nf) | 후보 입력·실행·순위·선택 연결 |
+| [tests/](tests/) | 합성 FASTQ·프라이머/컨테이너 테스트·결과 검증 |
+
+개별 도구는 `main.nf`에서 호출합니다. 여러 단계를 연결하는 QC와 절단 길이 최적화는 subworkflow로 구성합니다.
+
+---
