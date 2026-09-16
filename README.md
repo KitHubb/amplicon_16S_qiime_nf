@@ -385,7 +385,7 @@ Each process in `modules/*.nf` declares a versioned public container:
 
 Singularity/Apptainer directives use `docker://`; Docker uses the same image without that prefix, as required by [Nextflow](https://docs.seqera.io/nextflow/container/singularity). The runtime itself must already be installed. First use requires registry access and enough disk space, especially for QIIME 2. For a reusable Singularity cache, set `NXF_SINGULARITY_CACHEDIR` to a writable directory (shared across compute nodes on HPC); for Apptainer use `NXF_APPTAINER_CACHEDIR`.
 
-이미 보유한 로컬 SIF가 있다면 외부 `analysis.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. FastQC와 MultiQC 이미지는 각각 독립적으로 지정합니다. 생략한 도구만 공개 이미지를 사용합니다. 기존 `qc_sif` 설정은 `fastqc_sif`와 `multiqc_sif`로 교체하세요. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
+이미 보유한 로컬 SIF가 있다면 외부 `analysis.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. FastQC와 MultiQC 이미지는 각각 독립적으로 지정합니다. 생략한 도구만 공개 이미지를 사용합니다. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
 
 ```yaml
 # Optional local overrides; omit these to download public images automatically.
