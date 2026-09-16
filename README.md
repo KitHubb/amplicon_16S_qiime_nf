@@ -376,16 +376,16 @@ Primer 테스트 실행 방법은 [tests/README.md](tests/README.md)에 있습�
 
 Each process in `modules/*.nf` declares a versioned public container:
 
-| Tool | Image |
-|---|---|
-| FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` |
-| MultiQC | `quay.io/biocontainers/multiqc:1.27--pyhdfd78af_0` |
-| Cutadapt | `quay.io/biocontainers/cutadapt:5.2--py311hc303176_2` |
-| QIIME 2 | `quay.io/qiime2/amplicon:2025.7` |
+| Tool | Image | Local SIF/IMG parameter |
+|---|---|---|
+| FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` | `fastqc_sif` |
+| MultiQC | `quay.io/biocontainers/multiqc:1.27--pyhdfd78af_0` | `multiqc_sif` |
+| Cutadapt | `quay.io/biocontainers/cutadapt:5.2--py311hc303176_2` | `cutadapt_sif` |
+| QIIME 2 | `quay.io/qiime2/amplicon:2025.7` | `qiime_sif` |
 
 Singularity/Apptainer directives use `docker://`; Docker uses the same image without that prefix, as required by [Nextflow](https://docs.seqera.io/nextflow/container/singularity). The runtime itself must already be installed. First use requires registry access and enough disk space, especially for QIIME 2. For a reusable Singularity cache, set `NXF_SINGULARITY_CACHEDIR` to a writable directory (shared across compute nodes on HPC); for Apptainer use `NXF_APPTAINER_CACHEDIR`.
 
-이미 보유한 로컬 SIF가 있다면 외부 `analysis.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. FastQC와 MultiQC 이미지는 각각 독립적으로 지정합니다. 생략한 도구만 공개 이미지를 사용합니다. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
+이미 보유한 로컬 SIF/IMG가 있다면 외부 `analysis.yml` 또는 `nextflow_params.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. FastQC와 MultiQC 이미지는 각각 독립적으로 지정합니다. 생략한 도구만 공개 이미지를 사용합니다. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
 
 ```yaml
 # Optional local overrides; omit these to download public images automatically.
@@ -394,6 +394,30 @@ multiqc_sif: "/absolute/path/to/multiqc.img"
 cutadapt_sif: "/absolute/path/to/read_cleanup_cutadapt-5.2.sif"
 qiime_sif: "/absolute/path/to/qiime2_amplicon_2025.7.sif"
 ```
+
+FastQC와 MultiQC는 각각 별도의 이미지로 실행합니다. 기존 통합 QC 이미지와 공통 경로 설정은 사용하지 않습니다. QIIME 2 분석 단계들은 하나의 QIIME 2 이미지를 공유합니다.
+
+서버의 `/data/software/singularity/`에 저장한 개별 BioContainers 이미지를 사용하려면 기존 분석 YAML에 다음 두 항목을 넣습니다. FASTQ, metadata, classifier 등 기존 분석 설정은 함께 유지합니다.
+
+```yaml
+fastqc_sif: "/data/software/singularity/quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img"
+multiqc_sif: "/data/software/singularity/quay.io-biocontainers-multiqc-1.27--pyhdfd78af_0.img"
+```
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile singularity -params-file /path/to/nextflow_params.yml
+```
+
+이 서버에는 동일한 QC 경로를 담은 `/data/software/singularity/amplicon_16S_qc.config`도 준비되어 있습니다. 이 파일로 QC 컨테이너를 테스트하려면:
+
+```bash
+nextflow run KitHubb/amplicon_16S_qiime_nf -r v0.1.0 \
+  -profile test,singularity \
+  -c /data/software/singularity/amplicon_16S_qc.config
+```
+
+위 절대 경로와 서버용 config는 해당 서버 전용입니다. 외부 사용자는 자신의 이미지 경로를 지정하거나 로컬 이미지 설정을 생략하여 공개 이미지를 자동 다운로드합니다.
 
 Run the synthetic primer and all-container smoke tests without biological input data:
 
