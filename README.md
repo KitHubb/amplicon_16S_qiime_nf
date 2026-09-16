@@ -85,7 +85,7 @@ Usually an external YAML is sufficient.
 
 | Purpose | File or parameter |
 |---|---|
-| Container paths | `qc_sif`, `cutadapt_sif`, `qiime_sif` in [nextflow.config](nextflow.config) or YAML |
+| Container paths | `fastqc_sif`, `multiqc_sif`, `cutadapt_sif`, `qiime_sif` in [nextflow.config](nextflow.config) or YAML |
 | CPU, memory, time, executor | [conf/base.config](conf/base.config), [nextflow.config](nextflow.config), external site config |
 | Region and primer defaults | [lib/PrimerConfig.groovy](lib/PrimerConfig.groovy) |
 | Cutadapt filters | `quality`, `min_length`, [modules/cutadapt.nf](modules/cutadapt.nf) |
@@ -276,7 +276,8 @@ Primer는 IUPAC DNA 문자로 검사하고 소문자도 허용합니다. Read-th
 
 | 변경 내용 | 설정 또는 파일 | 설명 |
 |---|---|---|
-| FastQC·MultiQC 환경 | `qc_sif` — [nextflow.config](nextflow.config) 또는 외부 YAML | 선택 사항: 두 도구가 들어 있는 로컬 SIF 절대 경로. 미지정 시 각 BioContainers 이미지 사용 |
+| FastQC 환경 | `fastqc_sif` — [nextflow.config](nextflow.config) 또는 외부 YAML | 선택 사항: FastQC 로컬 SIF/IMG 절대 경로. 미지정 시 BioContainers 이미지 사용 |
+| MultiQC 환경 | `multiqc_sif` — 같은 위치 | 선택 사항: MultiQC 로컬 SIF/IMG 절대 경로. 미지정 시 BioContainers 이미지 사용 |
 | Cutadapt 환경 | `cutadapt_sif` — 같은 위치 | 선택 사항: 로컬 SIF 절대 경로. 미지정 시 BioContainers Cutadapt 5.2 사용 |
 | QIIME 2 환경 | `qiime_sif` — 같은 위치 | 선택 사항: 로컬 SIF 절대 경로. 미지정 시 공식 QIIME 2 amplicon 2025.7 이미지 사용 |
 | 기본 CPU·메모리·시간 | [conf/base.config](conf/base.config) | `process_low`: 8 CPU/16 GB/12 h, `process_medium`: 8 CPU/24 GB/24 h, `process_high`: 16 CPU/64 GB/72 h |
@@ -384,11 +385,12 @@ Each process in `modules/*.nf` declares a versioned public container:
 
 Singularity/Apptainer directives use `docker://`; Docker uses the same image without that prefix, as required by [Nextflow](https://docs.seqera.io/nextflow/container/singularity). The runtime itself must already be installed. First use requires registry access and enough disk space, especially for QIIME 2. For a reusable Singularity cache, set `NXF_SINGULARITY_CACHEDIR` to a writable directory (shared across compute nodes on HPC); for Apptainer use `NXF_APPTAINER_CACHEDIR`.
 
-이미 보유한 로컬 SIF가 있다면 외부 `analysis.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. `qc_sif`에는 FastQC와 MultiQC가 모두 있어야 합니다. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
+이미 보유한 로컬 SIF가 있다면 외부 `analysis.yml`에 아래 설정을 추가하고 `-profile singularity` 또는 `-profile apptainer`로 실행합니다. 지정한 이미지를 공개 이미지보다 우선 사용합니다. FastQC와 MultiQC 이미지는 각각 독립적으로 지정합니다. 생략한 도구만 공개 이미지를 사용합니다. 기존 `qc_sif` 설정은 `fastqc_sif`와 `multiqc_sif`로 교체하세요. Docker 프로필에서는 SIF 파일을 사용할 수 없습니다.
 
 ```yaml
 # Optional local overrides; omit these to download public images automatically.
-qc_sif: "/absolute/path/to/qc_fastqc_multiqc.sif"
+fastqc_sif: "/absolute/path/to/fastqc.sif"
+multiqc_sif: "/absolute/path/to/multiqc.img"
 cutadapt_sif: "/absolute/path/to/read_cleanup_cutadapt-5.2.sif"
 qiime_sif: "/absolute/path/to/qiime2_amplicon_2025.7.sif"
 ```

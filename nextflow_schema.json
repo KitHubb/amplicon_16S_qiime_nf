@@ -3,8 +3,9 @@
   "title": "16S V1V3/V3V4 amplicon pipeline parameters",
   "type": "object",
   "properties": {
-    "test": { "type": "boolean", "default": false, "description": "Run only the bundled synthetic primer regression" },
-    "qc_sif": { "type": ["string", "null"], "description": "Optional local SIF containing both FastQC and MultiQC" },
+    "test": { "type": "boolean", "default": false, "description": "Run bundled synthetic primer and all-container smoke tests" },
+    "fastqc_sif": { "type": ["string", "null"], "description": "Optional local FastQC SIF/IMG; otherwise download BioContainers image" },
+    "multiqc_sif": { "type": ["string", "null"], "description": "Optional local MultiQC SIF/IMG; otherwise download BioContainers image" },
     "cutadapt_sif": { "type": ["string", "null"], "description": "Optional local Cutadapt SIF; otherwise download BioContainers image" },
     "qiime_sif": { "type": ["string", "null"], "description": "Optional local QIIME 2 SIF; otherwise download official amplicon image" },
     "region": { "type": "string", "enum": ["V1V3", "V3V4", "v1v3", "v3v4"], "default": "V1V3" },

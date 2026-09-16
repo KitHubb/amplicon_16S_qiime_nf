@@ -14,11 +14,14 @@ provides a different forward primer so the CLI override verifies precedence.
 The `test` profile alone supplies all synthetic inputs and primer settings.
 Use `test,singularity` or `test,apptainer` with those runtimes instead.
 
-To reuse a local SIF:
+To reuse separate local SIF/IMG images (omit any option to use its public image):
 
 ```bash
 nextflow run . -profile test,singularity \
-  --cutadapt_sif /absolute/path/to/read_cleanup_cutadapt-5.2.sif
+  --fastqc_sif /absolute/path/to/fastqc.sif \
+  --multiqc_sif /absolute/path/to/multiqc.img \
+  --cutadapt_sif /absolute/path/to/read_cleanup_cutadapt-5.2.sif \
+  --qiime_sif /absolute/path/to/qiime2.sif
 python3 tests/check_containers.py results/primer-test
 ```
 
