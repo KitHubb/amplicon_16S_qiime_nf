@@ -393,15 +393,15 @@ cutadapt_sif: "/absolute/path/to/read_cleanup_cutadapt-5.2.sif"
 qiime_sif: "/absolute/path/to/qiime2_amplicon_2025.7.sif"
 ```
 
-Run the synthetic primer regression without biological input data:
+Run the synthetic primer and all-container smoke tests without biological input data:
 
 ```bash
 nextflow run . -profile test,docker
-python3 tests/check_trimmed.py results/primer-test
+python3 tests/check_containers.py results/primer-test
 # HPC alternative:
 nextflow run . -profile test,singularity
 ```
 
-`test` runs only primer assertions and real Cutadapt trimming on bundled synthetic FASTQ. It does not test the full QIIME 2 pipeline. The output verifier checks that both mates contain exactly one 60-base T sequence. See [tests/README.md](tests/README.md) for YAML/CLI precedence testing.
+`test` checks all four public images: real Cutadapt trimming, FastQC, MultiQC, QIIME 2 import and demux summary, plus availability of required QIIME plugin actions. The verifier checks trimmed sequences and generated reports/artifacts. It does not run full DADA2, taxonomy, phylogeny, or diversity analyses. Images are downloaded on first use and cached for subsequent runs. See [tests/README.md](tests/README.md) for YAML/CLI precedence testing.
 
 [GitHub Actions](.github/workflows/ci.yml) runs this regression and output verification on every push and pull request. A `v*` tag publishes a GitHub release only after that tag's test passes.

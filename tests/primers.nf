@@ -1,6 +1,9 @@
 nextflow.enable.dsl = 2
 
 include { CUTADAPT } from '../modules/cutadapt'
+include { QC } from '../subworkflows/qc'
+include { QIIME_IMPORT } from '../modules/qiime_import'
+include { QIIME_CONTAINER_CHECK } from './qiime_container'
 
 workflow PRIMER_TEST {
     def legacy = PrimerConfig.resolve([:])
@@ -30,7 +33,10 @@ workflow PRIMER_TEST {
     assert selected.primer_f == 'ACGTACGTACGT'
     assert selected.primer_r == v34.primer_r
     log.info 'Primer assertions and YAML/CLI precedence passed'
+    QIIME_CONTAINER_CHECK()
     CUTADAPT(Channel.of(tuple([id: 'synthetic'], file(params.test_r1), file(params.test_r2))), Channel.value(selected))
+    QC(CUTADAPT.out.reads, 'container_qc')
+    QIIME_IMPORT(CUTADAPT.out.reads.flatMap { meta, r1, r2 -> [r1, r2] }.collect())
 }
 
 workflow {

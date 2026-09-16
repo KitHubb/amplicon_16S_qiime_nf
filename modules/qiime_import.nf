@@ -16,15 +16,16 @@ process QIIME_IMPORT {
 
     script:
     """
-    export TMPDIR=\"\$PWD/tmp\" XDG_CACHE_HOME=\"\$PWD/cache\"
-    mkdir -p \"\$TMPDIR\" \"\$XDG_CACHE_HOME\"
+    export TMPDIR="\$PWD/tmp" XDG_CACHE_HOME="\$PWD/cache"
+    export MPLCONFIGDIR="\$PWD/mpl"
+    mkdir -p "\$TMPDIR" "\$XDG_CACHE_HOME" "\$MPLCONFIGDIR"
 
-    printf 'sample-id\tforward-absolute-filepath\treverse-absolute-filepath\n' > manifest.tsv
+    printf 'sample-id\\tforward-absolute-filepath\\treverse-absolute-filepath\\n' > manifest.tsv
     for r1 in *.R1.trimmed.fastq.gz; do
-      sample=\"\${r1%.R1.trimmed.fastq.gz}\"
-      r2=\"\${sample}.R2.trimmed.fastq.gz\"
-      test -f \"\$r2\"
-      printf '%s\t%s/%s\t%s/%s\n' \"\$sample\" \"\$PWD\" \"\$r1\" \"\$PWD\" \"\$r2\" >> manifest.tsv
+      sample="\${r1%.R1.trimmed.fastq.gz}"
+      r2="\${sample}.R2.trimmed.fastq.gz"
+      test -f "\$r2"
+      printf '%s\\t%s/%s\\t%s/%s\\n' "\$sample" "\$PWD" "\$r1" "\$PWD" "\$r2" >> manifest.tsv
     done
 
     qiime tools import \
